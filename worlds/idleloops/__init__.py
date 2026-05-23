@@ -1,10 +1,9 @@
+from os import name
+
 from .Options import IdleLoopsOptions, Goal
-from .Items import Z1_items, IdleLoopsItem
-from .Locations import Z1_locations, IdleLoopsLocation, regions_to_locations
-from .Regions import idle_loops_regions_z1
+from .Actions import all_actions, all_locations, all_items, journeyRules, location_to_id, item_to_id, IdleLoopsLocation, IdleLoopsItem
 from typing import Dict, Any
-from . import Rules
-from BaseClasses import Region, Item, Tutorial, ItemClassification
+from BaseClasses import CollectionState, Region, Item, Tutorial, ItemClassification
 from worlds.AutoWorld import World, WebWorld
 
 # Based this file off Inscryption's world (since it was next alphabetically when i created the folder)
@@ -37,14 +36,15 @@ class IdleLoopsWorld(World):
     web = IdleLoopsWeb()
     options_dataclass = IdleLoopsOptions
     options: IdleLoopsOptions
-    all_items = Z1_items
-    item_name_to_id = {item["name"]: i + 1 for i, item in enumerate(all_items)}
-    all_locations = Z1_locations
-    location_name_to_id = {location: i + 1 for i, location in enumerate(all_locations)}
+    item_name_to_id = item_to_id
+    location_name_to_id = location_to_id
 
     def generate_early(self) -> None:
-        self.all_items = [item.copy() for item in self.all_items]
+        self.all_items = [item.copy() for item in all_items]
+        self.all_items[self.item_name_to_id["Z1 - Wander"] - 1]["count"] = 0
         self.multiworld.push_precollected(self.create_item("Z1 - Wander"))
+        # I tried with only Wander and there just wasn't enough early checks
+        self.multiworld.push_precollected(self.create_item("Z1 - Pots - Search"))
         # Handle Options
         pass
 
@@ -59,34 +59,47 @@ class IdleLoopsWorld(World):
 
     def create_items(self) -> None:
         items_added = 0
-        useful_items = self.all_items.copy()
 
-        for item in useful_items:
+        for item in self.all_items:
             for _ in range(item["count"]):
                 new_item = self.create_item(item["name"])
                 self.multiworld.itempool.append(new_item)
                 items_added += 1
 
-        filler_count = len(self.all_locations) - items_added
+        filler_count = len(all_locations) - items_added
 
-        for i in range(filler_count):
+        for _ in range(filler_count):
             new_item = self.create_item(self.get_filler_item_name())
             self.multiworld.itempool.append(new_item)
 
     def create_regions(self) -> None:
-        used_regions = idle_loops_regions_z1
-        for region_name in used_regions.keys():
+        used_regions = {
+            "Menu": ["Z1"],
+            "Z1": []
+        }
+
+        for region_name in used_regions:
             self.multiworld.regions.append(Region(region_name, self.player, self.multiworld))
 
         for region_name, region_connections in used_regions.items():
             region = self.get_region(region_name)
             region.add_exits(region_connections)
             region.add_locations({
-                location: self.location_name_to_id[location] for location in regions_to_locations[region_name]
+                location: self.location_name_to_id[location] for location in all_locations if location.startswith(region_name)
             })
 
     def set_rules(self) -> None:
-        Rules.IdleLoopsRules(self).set_all_rules()
+        rules = {}
+        for action in all_actions:
+            rules.update(action.rules(self.multiworld, self.player))
+        multiworld = self.multiworld
+        for region in multiworld.get_regions(self.player):
+            for loc in region.locations:
+                if loc.name in rules:
+                    loc.access_rule = rules[loc.name]
+        multiworld.completion_condition[self.player] = rules["Z1 - StartJourney"]
 
     def fill_slot_data(self) -> Dict[str, Any]:
-        return self.options.as_dict()
+        return self.options.as_dict(
+            "goal"
+        )
