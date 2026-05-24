@@ -1,7 +1,7 @@
 from os import name
 
 from .Options import IdleLoopsOptions, Goal
-from .Actions import all_actions, all_locations, all_items, journeyRules, location_to_id, item_to_id, IdleLoopsLocation, IdleLoopsItem
+from .Actions import all_actions, all_locations, all_items, journeyRules, location_to_id, item_to_id, IdleLoopsLocation, IdleLoopsItem, filler_item_names, Tags
 from typing import Dict, Any
 from BaseClasses import CollectionState, Region, Item, Tutorial, ItemClassification
 from worlds.AutoWorld import World, WebWorld
@@ -46,11 +46,29 @@ class IdleLoopsWorld(World):
         # I tried with only Wander and there just wasn't enough early checks
         self.multiworld.push_precollected(self.create_item("Z1 - Pots - Search"))
         # Handle Options
-        pass
+        self.excluded_tags = []
+        if self.options.goal == Goal.option_z1:
+            self.goal = "Z1"
+            self.excluded_tags.append(Tags.Z2)
+            self.excluded_tags.append(Tags.Z3)
+        elif self.options.goal == Goal.option_z2:
+            self.goal = "Z2"
+            self.excluded_tags.append(Tags.Z3)
+        else:
+            self.goal = "Z3"
 
+
+        # if self.goal != "Z1":
+        #     self.multiworld.early_items[self.player]["Z1 - Met"] = 1
+        #     self.multiworld.early_items[self.player]["Z1 - Secrets"] = 1
+        #     self.multiworld.early_items[self.player]["Z1 - BuySupplies"] = 1
+        #     self.multiworld.early_items[self.player]["Z1 - BuyManaZ1"] = 1
+        #     self.multiworld.early_items[self.player]["Z1 - Haggle"] = 1
+        #     self.multiworld.early_items[self.player]["Z1 - StartJourney"] = 1
+
+    # I'm quite worried about Z2+ items diluting the pool and making Z1 impossible without a loooong wait for checks, so I think all filler should help Z1
     def get_filler_item_name(self) -> str:
-        return "Z1 - Pots"
-        return self.random.choice(filler_items)["name"]
+        return self.random.choice(filler_item_names)
 
     def create_item(self, name: str) -> Item:
         item_id = self.item_name_to_id[name]
@@ -60,32 +78,62 @@ class IdleLoopsWorld(World):
     def create_items(self) -> None:
         items_added = 0
 
+        # Surely performs worse than a separate action list for each zone
+        # More refactoring for the future!
+        pre_goal = True
         for item in self.all_items:
+            if not pre_goal:
+                if not item["name"].startswith(self.goal):
+                    break
+            else:
+                if item["name"].startswith(self.goal):
+                    pre_goal = False
+
             for _ in range(item["count"]):
                 new_item = self.create_item(item["name"])
                 self.multiworld.itempool.append(new_item)
                 items_added += 1
+        
+        used_locations = []
+        pre_goal = True
+        for location in all_locations:
+            if location[1] not in self.excluded_tags:
+                used_locations.append(location)
 
-        filler_count = len(all_locations) - items_added
+        filler_count = len(used_locations) - items_added
 
         for _ in range(filler_count):
             new_item = self.create_item(self.get_filler_item_name())
             self.multiworld.itempool.append(new_item)
 
     def create_regions(self) -> None:
+            
+        def z2rule(state: CollectionState) -> bool:
+            return state.can_reach("Z1 - StartJourney", "Location" , self.player)
+        def z3rule(state: CollectionState) -> bool:
+            return state.can_reach("Z2 - ContinueOn", "Location" , self.player)
+
         used_regions = {
-            "Menu": ["Z1"],
-            "Z1": []
+            "Menu": (["Z1"], {}),
+            "Z1": ([], {})
         }
+
+        if self.goal != "Z1":
+            used_regions["Z1"] = (["Z2"], {"Z2": z2rule})
+            used_regions["Z2"] = ([], {})
+            if self.goal != "Z2":
+                used_regions["Z2"] = (["Z3"], {"Z3": z3rule})
+                used_regions["Z3"] = ([], {})
 
         for region_name in used_regions:
             self.multiworld.regions.append(Region(region_name, self.player, self.multiworld))
 
-        for region_name, region_connections in used_regions.items():
+        for region_name, region_data in used_regions.items():
+            region_connections, region_rules = region_data
             region = self.get_region(region_name)
-            region.add_exits(region_connections)
+            region.add_exits(region_connections, region_rules)
             region.add_locations({
-                location: self.location_name_to_id[location] for location in all_locations if location.startswith(region_name)
+                location[0]: self.location_name_to_id[location[0]] for location in all_locations if location[1] not in self.excluded_tags and location[0].startswith(region_name)
             })
 
     def set_rules(self) -> None:
@@ -97,7 +145,13 @@ class IdleLoopsWorld(World):
             for loc in region.locations:
                 if loc.name in rules:
                     loc.access_rule = rules[loc.name]
-        multiworld.completion_condition[self.player] = rules["Z1 - StartJourney"]
+
+        # These broke generation? I feel it should be equivalent to the existing can_reach on the locations, whatever
+
+        # if self.goal == "Z1":
+        #     multiworld.completion_condition[self.player] = rules["Z1 - StartJourney"]
+        # elif self.goal == "Z2":
+        #     multiworld.completion_condition[self.player] = rules["Z2 - ContinueOn"]
 
     def fill_slot_data(self) -> Dict[str, Any]:
         return self.options.as_dict(

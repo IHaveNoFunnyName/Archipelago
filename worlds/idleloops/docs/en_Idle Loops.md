@@ -17,6 +17,7 @@ All Actions, all Lootable counts, other stuff i'll discover and decide on while 
 - Finishing an action for the first time
 - Progress in progress bar actions (at 1%, 10%, 25%, 50%, 75%, 90%, 95%, 99%, 100%)
 - Gaining a lootable count (i.e. how many pots you can smash)
+- First and then every 10 levels in a skill
 - Reaching new highs for actions like "Fight Monsters" or "Small Dungeon"
 
 Some of these will have options in the future.
