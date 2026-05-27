@@ -20,8 +20,10 @@ class IdleLoopsItem(Item):
 #     progression = "progression"
 
 class Tags:
-    Z2 = 0
-    Z3 = 1
+    Z1 = 0
+    Z2 = 1
+    Z3 = 2
+    Z4 = 3
 
 class Action:
     def __init__(self, zone: str, name: str, classification: ItemClassification=ItemClassification.useful, tags: List[Tags]=None, rules: callable=None):
@@ -133,7 +135,7 @@ class SkillAction(Action):
         self.skill = skill
     
     def location_list(self) -> List[str]:
-        return [self.unlock_item_name()] + [f"{self.skill} - Level {n}" for n in self.skill_locations]
+        return [f"{self.skill} - Level {n}" for n in self.skill_locations]
 
 class FillerItem(Action):
     def __init__(self, name: str, classification: ItemClassification=ItemClassification.filler, tags: List[Tags]=None):
@@ -142,20 +144,63 @@ class FillerItem(Action):
         return []
 
 # Can i finagle the MRO enough to not have to subclass action? Probably! But lets be safe.
-class A2(Action):
+class Z1(Action):
+    def __init__(self, *args, tags: List[Tags]=None, **kwargs):
+        super().__init__(*args, **kwargs, tags=(tags or []) + [Tags.Z1])
+class Z1Action(Z1, Action):
+    pass
+class Z1ProgressAction(Z1, ProgressAction):
+    pass
+class Z1LimitedAction(Z1, LimitedAction):
+    pass
+class Z1MultipartAction(Z1, MultipartAction):
+    pass
+class Z1SkillAction(Z1, SkillAction):
+    pass
+
+class Z2(Action):
     def __init__(self, *args, tags: List[Tags]=None, **kwargs):
         super().__init__(*args, **kwargs, tags=(tags or []) + [Tags.Z2])
-
-class A2Action(A2, Action):
+class Z2Action(Z2, Action):
     pass
-class A2ProgressAction(A2, ProgressAction):
+class Z2ProgressAction(Z2, ProgressAction):
     pass
-class A2LimitedAction(A2, LimitedAction):
+class Z2LimitedAction(Z2, LimitedAction):
     def __init__(self, *args, classification: ItemClassification=ItemClassification.useful, **kwargs):
         super().__init__(*args, classification=classification, **kwargs)
-class A2MultipartAction(A2, MultipartAction):
+class Z2MultipartAction(Z2, MultipartAction):
     pass
-class A2SkillAction(A2, SkillAction):
+class Z2SkillAction(Z2, SkillAction):
+    pass
+
+class Z3(Action):
+    def __init__(self, *args, tags: List[Tags]=None, **kwargs):
+        super().__init__(*args, **kwargs, tags=(tags or []) + [Tags.Z3])
+class Z3Action(Z3, Action):
+    pass
+class Z3ProgressAction(Z3, ProgressAction):
+    pass
+class Z3LimitedAction(Z3, LimitedAction):
+    def __init__(self, *args, classification: ItemClassification=ItemClassification.useful, **kwargs):
+        super().__init__(*args, classification=classification, **kwargs)
+class Z3MultipartAction(Z3, MultipartAction):
+    pass
+class Z3SkillAction(Z3, SkillAction):
+    pass
+
+class Z4(Action):
+    def __init__(self, *args, tags: List[Tags]=None, **kwargs):
+        super().__init__(*args, **kwargs, tags=(tags or []) + [Tags.Z4])
+class Z4Action(Z4, Action):
+    pass
+class Z4ProgressAction(Z4, ProgressAction):
+    pass
+class Z4LimitedAction(Z4, LimitedAction):
+    def __init__(self, *args, classification: ItemClassification=ItemClassification.useful, **kwargs):
+        super().__init__(*args, classification=classification, **kwargs)
+class Z4MultipartAction(Z4, MultipartAction):
+    pass
+class Z4SkillAction(Z4, SkillAction):
     pass
 
 # I'm not happy with the boilerplate this needs, but just passing rule would lose access to Action.self
@@ -189,60 +234,112 @@ def dungeonRules(self: Action, world, player) -> Dict[str, callable]:
         return state.has(self.unlock_item_name(), player) & state.has("Z1 - MageLessons", player) & state.has("Z1 - WarriorLessons", player)
     return {name: rule for name in self.location_list()}
 
-# It's only items but calling it actions makes it fit with the others
+def judgementRules(self: Action, world, player) -> Dict[str, callable]:
+    def rule(state: CollectionState) -> bool:
+        return state.has(self.unlock_item_name(), player) & state.has("Z1 - Heal", player)
+    return {name: rule for name in self.location_list()}
+
+# ofc filler actions are only items but calling it actions makes it fit with the others
 filler_actions = [
     FillerItem("50 Starting Mana"),
     FillerItem("1 Starting Gold"),
     FillerItem("+0.1 Game Speed"),
 ]
 
-z1_actions = [
+# Zn Class means that action should be included if the goal is >=n, the "Zn" argument is for display/to hint what zone the item/location is in
+# e.g. you can stretch to Small Dungeon completion 3 in Z1 if you really want to, but you're only doing 4+ in Z3 (Z4 with pyromancy? idk i forget this game)
+# i.e. Z1MultipartAction("Z1", "SDungeon", [1, 2, 3]...) & Z3MultiPartAction("Z1", "SDungeon", [4, 5, 6]...)
+#           Will put checks in Small Dungeon completion 4-6 only if the goal is Z3 or higher
+all_actions = [
+
+    # Zone 1
+
     # I assume this is not the proper way to handle rules for starting items,
     # but the world failed to generate because wander locations needed wander item, so nothing could be placed anywhere.
-    # I assumed this is what push_precollected was for - i guess not - deleting the rule solved it.
-    ProgressAction("Z1", "Wander", rules=lambda *args: {}),
-    LimitedAction("Z1", "Pots", [], 50, 0, lootable_classification=ItemClassification.filler, rules=lambda *args: {}),
-    LimitedAction("Z1", "Locks", [], 10),
-    Action("Z1", "BuyGlasses"),
-    Action("Z1", "BuyManaZ1", ItemClassification.progression),
-    ProgressAction("Z1", "Met", ItemClassification.progression),
-    Action("Z1", "TrainStrength"),
-    LimitedAction("Z1", "SQuests", ["Z1 - Met"], 20),
-    ProgressAction("Z1", "Secrets", ItemClassification.progression),
-    LimitedAction("Z1", "LQuests", ["Z1 - Secrets"], 10),
-    Action("Z1", "ThrowParty"),
-    SkillAction("Z1", "WarriorLessons", "Combat"),
-    SkillAction("Z1", "MageLessons", "Magic"),
+    # I assumed push_precollected would have "Z1 - Wander" in state - i guess not - deleting the rule solved it.
+    Z1ProgressAction("Z1", "Wander", rules=lambda *args: {}),
+    Z1LimitedAction("Z1", "Pots", [], 50, 25, lootable_classification=ItemClassification.filler, rules=lambda *args: {}),
+    Z1LimitedAction("Z1", "Locks", [], 10),
+    Z1Action("Z1", "BuyGlasses"),
+    Z1Action("Z1", "BuyManaZ1", ItemClassification.progression),
+    Z1ProgressAction("Z1", "Met", ItemClassification.progression),
+    Z1Action("Z1", "TrainStrength"),
+    Z1LimitedAction("Z1", "SQuests", ["Z1 - Met"], 20),
+    Z1ProgressAction("Z1", "Secrets", ItemClassification.progression),
+    Z1LimitedAction("Z1", "LQuests", ["Z1 - Secrets"], 10),
+    Z1Action("Z1", "ThrowParty"),
+    Z1SkillAction("Z1", "WarriorLessons", "Combat"),
+    Z1SkillAction("Z1", "MageLessons", "Magic"),
     # Looking for feedback on these limits, what's reasonably reachable in Z1/Z2. I feel 10/10/6 works for Z3+.
-    MultipartAction("Z1", "Heal", range(1, 4), rules=healRules),
-    MultipartAction("Z1", "Fight", range(1, 4), rules=fightRules),
-    MultipartAction("Z1", "SDungeon", range(1, 4), rules=dungeonRules),
-    Action("Z1", "BuySupplies", ItemClassification.progression),
-    Action("Z1", "Haggle", ItemClassification.progression),
-    Action("Z1", "StartJourney", ItemClassification.progression, rules=journeyRules)
-]
-z2_actions = [
-    A2ProgressAction("Z2", "Forest"),
-    A2LimitedAction("Z2", "WildMana", ["Z2 - Forest", "Z2 - Thicket"], 100, lootable_classification=ItemClassification.filler),
-    A2LimitedAction("Z2", "Herbs", ["Z2 - Forest", "Z2 - Shortcut"], 200, lootable_classification=ItemClassification.filler),
-    A2LimitedAction("Z2", "Hunt", ["Z2 - Forest"], 20, lootable_classification=ItemClassification.filler),
-    A2Action("Z2", "SitByWaterfall"),
-    A2ProgressAction("Z2", "Shortcut"),
-    A2ProgressAction("Z2", "Hermit"),
-    A2SkillAction("Z2", "PracticalMagic", "Practical"),
+    Z1MultipartAction("Z1", "Heal", [1, 2, 3], rules=healRules),
+    Z1MultipartAction("Z1", "Fight", [1, 2, 3], rules=fightRules),
+    Z1MultipartAction("Z1", "SDungeon", [1, 2, 3], rules=dungeonRules),
+    Z1Action("Z1", "BuySupplies", ItemClassification.progression),
+    Z1Action("Z1", "Haggle", ItemClassification.progression),
+    Z1Action("Z1", "StartJourney", ItemClassification.progression, rules=journeyRules),
+
+    # Zone 2
+
+    Z2ProgressAction("Z2", "Forest"),
+    Z2LimitedAction("Z2", "WildMana", ["Z2 - Forest", "Z2 - Thicket"], 100, lootable_classification=ItemClassification.filler),
+    Z2LimitedAction("Z2", "Herbs", ["Z2 - Forest", "Z2 - Shortcut"], 200, lootable_classification=ItemClassification.filler),
+    Z2LimitedAction("Z2", "Hunt", ["Z2 - Forest"], 20, lootable_classification=ItemClassification.filler),
+    Z2Action("Z2", "SitByWaterfall"),
+    Z2ProgressAction("Z2", "Shortcut"),
+    Z2ProgressAction("Z2", "Hermit"),
+    Z2SkillAction("Z2", "PracticalMagic", "Practical"),
     # *techincally* there's a rule here for herbs but pffft that's not going to be an issue
-    A2SkillAction("Z2", "LearnAlchemy", "Alchemy"),
-    A2Action("Z2", "BrewPotions"),
-    A2Action("Z2", "TrainDexterity"),
-    A2Action("Z2", "TrainSpeed"),
-    A2ProgressAction("Z2", "Flowers"),
-    A2Action("Z2", "BirdWatching"),
-    A2ProgressAction("Z2", "Thicket"),
-    A2ProgressAction("Z2", "Witch"),
-    A2SkillAction("Z2", "DarkMagic", "Dark"),
+    Z2SkillAction("Z2", "LearnAlchemy", "Alchemy"),
+    Z2Action("Z2", "BrewPotions"),
+    Z2Action("Z2", "TrainDexterity"),
+    Z2Action("Z2", "TrainSpeed"),
+    Z2ProgressAction("Z2", "Flowers"),
+    Z2Action("Z2", "BirdWatching"),
+    Z2ProgressAction("Z2", "Thicket"),
+    Z2ProgressAction("Z2", "Witch"),
+    Z2SkillAction("Z2", "DarkMagic", "Dark"),
     # This feels like a Z3 location, but you can stretch for at least the first one in Z2
-    A2MultipartAction("Z2", "DarkRitual", range(1, 2)),
-    A2Action("Z2", "ContinueOn")
+    Z2MultipartAction("Z2", "DarkRitual", [1]),
+    Z2Action("Z2", "ContinueOn"),
+
+    # Zone 3
+
+    Z3ProgressAction("Z3", "City"),
+    Z3LimitedAction("Z3", "Gamble", ["Z3 - City"], 20),
+    Z3Action("Z3", "Drunk"),
+    Z3Action("Z3", "BuyManaZ3"),
+    Z3Action("Z3", "SellPotions"),
+    # I remember this being hard, i'll put this here to unlock it during testing and see if it's like Z5+ content
+    Z3MultipartAction("Z3", "AdvGuild", [1]),
+    Z3Action("Z3", "GatherTeam"),
+    Z3MultipartAction("Z3", "LDungeon", [1, 2, 3]),
+    # Ditto
+    Z3MultipartAction("Z3", "CraftGuild", [1]),
+    Z3ProgressAction("Z3", "Apprentice"),
+    Z3ProgressAction("Z3", "Mason"),
+    Z3ProgressAction("Z3", "Architect"),
+    Z3Action("Z3", "ReadBooks"),
+    Z3Action("Z3", "BuyPickaxe"),
+    Z3Action("Z3", "StartTrek"),
+    
+    # Zone 4
+
+    Z4ProgressAction("Z4", "Mountain"),
+    Z4LimitedAction("Z4", "Geysers", ["Z4 - Mountain"], 20),
+    Z4ProgressAction("Z4", "Runes"),
+    Z4SkillAction("Z4", "Chronomancy", "Chronomancy"),
+    # I forget if this is Z5+ content, I think it is because you need twice the possible herbs
+    # Z4Action("Z4", "LoopingPotion"),
+    Z4SkillAction("Z4", "Pyromancy", "Pyromancy"),
+    Z4ProgressAction("Z4", "Cavern"),
+    Z4LimitedAction("Z4", "MineSoulstones", ["Z4 - Cavern"], 30),
+    Z4MultipartAction("Z4", "HuntTrolls", [1]),
+    Z4ProgressAction("Z4", "Illusions"),
+    Z4LimitedAction("Z4", "Artifacts", ["Z4 - Illusions"], 20),
+    Z4MultipartAction("Z4", "ImbueMind", [1]),
+    # This one was *absolutely* later content
+    # Z4MultipartAction("Z4", "ImbueBody", [1]),
+    Z4Action("Z4", "FaceJudgement", rules=judgementRules)
 ]
 
 location_id = 1
@@ -253,7 +350,7 @@ item_to_id = {}
 all_locations = []
 all_items = []
 
-all_actions = filler_actions + z1_actions + z2_actions
+all_actions = all_actions + filler_actions
 
 for action in all_actions:
     locations, location_id = action.locations(location_id, location_to_id)
