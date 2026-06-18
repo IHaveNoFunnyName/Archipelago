@@ -49,13 +49,15 @@ class IdleLoopsWorld(World):
         self.excluded_tags = []
         if self.options.goal == Goal.option_z1:
             self.goal = "Z1"
-            self.excluded_tags = self.excluded_tags + Tags.Z2 + Tags.Z3 + Tags.Z4
+            self.excluded_tags = self.excluded_tags + [Tags.Z2, Tags.Z3, Tags.Z4]
         elif self.options.goal == Goal.option_z2:
             self.goal = "Z2"
-            self.excluded_tags = self.excluded_tags + Tags.Z3 + Tags.Z4
+            self.excluded_tags = self.excluded_tags + [Tags.Z3, Tags.Z4]
         elif self.options.goal == Goal.option_z3:
             self.goal = "Z3"
-            self.excluded_tags = self.excluded_tags + Tags.Z4
+            self.excluded_tags = self.excluded_tags + [Tags.Z4]
+        elif self.options.goal == Goal.option_z4:
+            self.goal = "Z4"
 
         # Enough guaranteed pots to Meet People/Investigate, and buy mana to be able to get mana from locks/quests
         # Should be enough
@@ -80,19 +82,12 @@ class IdleLoopsWorld(World):
     def create_items(self) -> None:
         items_added = 0
 
-        # Surely performs worse than a separate action list for each zone
-        # More refactoring for the future!
-        pre_goal = True
         # Wander and Smash Pots are precollected so should are skipped here with [2::]
         # There's a better way to do this
-        # I'm also noticing that this is the second "geez redo this in the futre comment for this block"
         for item in self.all_items[2::]:
-            if not pre_goal:
-                if not item["name"].startswith(self.goal):
-                    break
-            else:
-                if item["name"].startswith(self.goal):
-                    pre_goal = False
+
+            if (not item["name"][0] ==  "F") and int(item["name"][1]) > int(self.goal[1]):
+                pass
 
             for _ in range(item["count"]):
                 new_item = self.create_item(item["name"])
@@ -100,7 +95,6 @@ class IdleLoopsWorld(World):
                 items_added += 1
         
         used_locations = []
-        pre_goal = True
         for location in all_locations:
             if all(tag not in self.excluded_tags for tag in location[1]):
                 used_locations.append(location)
@@ -122,20 +116,11 @@ class IdleLoopsWorld(World):
             }, self.player)
         def z3rule(state: CollectionState) -> bool:
             return state.has_all_counts({
-                "Z1 - BuySupplies": 1,
-                "Z1 - BuyManaZ1": 1,
-                "Z1 - Haggle": 1,
-                "Z1 - StartJourney": 1,
                 "Z2 - ContinueOn": 1
             }, self.player)
         def z4rule(state: CollectionState) -> bool:
             return state.has_all_counts({
-                "Z1 - BuySupplies": 1,
-                "Z1 - BuyManaZ1": 1,
-                "Z1 - Haggle": 1,
-                "Z1 - StartJourney": 1,
-                "Z2 - ContinueOn": 1,
-                "Z3 - FaceJudgement": 1
+                "Z3 - StartTrek": 1
             }, self.player)
         
         dumb = {
@@ -183,16 +168,35 @@ class IdleLoopsWorld(World):
                     loc.access_rule = rules[loc.name]
         
         # def z2rule(state: CollectionState) -> bool:
-        #     return state.can_reach("Z1 - StartJourney", "Location" , self.player)
+        #     return state.has_all_counts({
+        #         "Z1 - BuySupplies": 1,
+        #         "Z1 - BuyManaZ1": 1,
+        #         "Z1 - Haggle": 1,
+        #         "Z1 - StartJourney": 1
+        #     }, self.player)
         # def z3rule(state: CollectionState) -> bool:
-        #     return state.can_reach("Z2 - ContinueOn", "Location" , self.player)
+        #     return state.has_all_counts({
+        #         "Z2 - ContinueOn": 1
+        #     }, self.player)
+        # def z4rule(state: CollectionState) -> bool:
+        #     return state.has_all_counts({
+        #         "Z3 - StartTrek": 1
+        #     }, self.player)
+        # def z5rule(state: CollectionState) -> bool:
+        #     return state.has_all_counts({
+        #         "Z4 - FaceJudgement": 1
+        #     }, self.player)
 
-        # These broke generation? I feel it should be equivalent to the existing can_reach on the locations, whatever
+        # # These broke generation? I feel it should be equivalent to the existing rules on the regions, whatever
 
         # if self.goal == "Z1":
         #     multiworld.completion_condition[self.player] = z2rule
         # elif self.goal == "Z2":
         #     multiworld.completion_condition[self.player] = z3rule
+        # elif self.goal == "Z3":
+        #     multiworld.completion_condition[self.player] = z4rule
+        # elif self.goal == "Z4":
+        #     multiworld.completion_condition[self.player] = z5rule
 
     def fill_slot_data(self) -> Dict[str, Any]:
         return self.options.as_dict(
