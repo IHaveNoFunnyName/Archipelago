@@ -1,7 +1,7 @@
 from os import name
 
 from .Options import IdleLoopsOptions, Goal
-from .Actions import all_actions, all_locations, all_items, journeyRules, location_to_id, item_to_id, IdleLoopsLocation, IdleLoopsItem, filler_item_names, Tags
+from .Actions import all_actions, all_locations, all_items, location_name_to_id, item_to_id, IdleLoopsLocation, IdleLoopsItem, filler_item_names, Tags
 from typing import Dict, Any
 from BaseClasses import CollectionState, Region, Item, Tutorial, ItemClassification
 from worlds.AutoWorld import World, WebWorld
@@ -37,14 +37,18 @@ class IdleLoopsWorld(World):
     options_dataclass = IdleLoopsOptions
     options: IdleLoopsOptions
     item_name_to_id = item_to_id
-    location_name_to_id = location_to_id
+    location_name_to_id = location_name_to_id
 
     def generate_early(self) -> None:
         self.all_items = [item.copy() for item in all_items]
-        self.all_items[self.item_name_to_id["Z1 - Wander"] - 1]["count"] = 0
+
+        self.rules = {}
+        for action in all_actions:
+            self.rules.update(action.rules(self.multiworld, self.player))
+
         self.multiworld.push_precollected(self.create_item("Z1 - Wander"))
-        # I tried with only Wander and there just wasn't enough early checks
-        self.multiworld.push_precollected(self.create_item("Z1 - Pots - Search"))
+        # I tried with only Wander and it still was too restrictive a start
+        self.multiworld.push_precollected(self.create_item("Z1 - Mana Pot - Search"))
         # Handle Options
         self.excluded_tags = []
         if self.options.goal == Goal.option_z1:
@@ -62,11 +66,11 @@ class IdleLoopsWorld(World):
         # Enough guaranteed pots to Meet People/Investigate, and buy mana to be able to get mana from locks/quests
         # Should be enough
         if self.goal != "Z1":
-        #     self.multiworld.early_items[self.player]["Z1 - Met"] = 1
-        #     self.multiworld.early_items[self.player]["Z1 - Secrets"] = 1
+            self.multiworld.early_items[self.player]["Z1 - Meet People"] = 1
+            self.multiworld.early_items[self.player]["Z1 - Investigate"] = 1
         #     self.multiworld.early_items[self.player]["Z1 - BuySupplies"] = 1
-            self.multiworld.local_early_items[self.player]["Z1 - BuyManaZ1"] = 1
-            self.multiworld.local_early_items[self.player]["Z1 - Pots"] = 15
+            self.multiworld.local_early_items[self.player]["Z1 - Buy Mana"] = 1
+            self.multiworld.local_early_items[self.player]["Z1 - Mana Pot"] = 15
         #     self.multiworld.early_items[self.player]["Z1 - Haggle"] = 1
         #     self.multiworld.early_items[self.player]["Z1 - StartJourney"] = 1
 
@@ -105,24 +109,7 @@ class IdleLoopsWorld(World):
             new_item = self.create_item(self.get_filler_item_name())
             self.multiworld.itempool.append(new_item)
 
-    def create_regions(self) -> None:
-            
-        def z2rule(state: CollectionState) -> bool:
-            return state.has_all_counts({
-                "Z1 - BuySupplies": 1,
-                "Z1 - BuyManaZ1": 1,
-                "Z1 - Haggle": 1,
-                "Z1 - StartJourney": 1
-            }, self.player)
-        def z3rule(state: CollectionState) -> bool:
-            return state.has_all_counts({
-                "Z2 - ContinueOn": 1
-            }, self.player)
-        def z4rule(state: CollectionState) -> bool:
-            return state.has_all_counts({
-                "Z3 - StartTrek": 1
-            }, self.player)
-        
+    def create_regions(self) -> None:        
         dumb = {
             "Menu": "_",
             "Z1": Tags.Z1,
@@ -137,13 +124,13 @@ class IdleLoopsWorld(World):
         }
 
         if self.goal != "Z1":
-            used_regions["Z1"] = (["Z2"], {"Z2": z2rule})
+            used_regions["Z1"] = (["Z2"], {"Z2": self.rules["Z1 - Start Journey"]})
             used_regions["Z2"] = ([], {})
             if self.goal != "Z2":
-                used_regions["Z2"] = (["Z3"], {"Z3": z3rule})
+                used_regions["Z2"] = (["Z3"], {"Z3": self.rules["Z2 - Continue On"]})
                 used_regions["Z3"] = ([], {})
                 if self.goal != "Z3":
-                    used_regions["Z3"] = (["Z4"], {"Z4": z4rule})
+                    used_regions["Z3"] = (["Z4"], {"Z4": self.rules["Z3 - Start Trek"]})
                     used_regions["Z4"] = ([], {})
 
         for region_name in used_regions:
@@ -158,45 +145,23 @@ class IdleLoopsWorld(World):
             })
 
     def set_rules(self) -> None:
-        rules = {}
-        for action in all_actions:
-            rules.update(action.rules(self.multiworld, self.player))
+        
         multiworld = self.multiworld
         for region in multiworld.get_regions(self.player):
             for loc in region.locations:
-                if loc.name in rules:
-                    loc.access_rule = rules[loc.name]
-        
-        # def z2rule(state: CollectionState) -> bool:
-        #     return state.has_all_counts({
-        #         "Z1 - BuySupplies": 1,
-        #         "Z1 - BuyManaZ1": 1,
-        #         "Z1 - Haggle": 1,
-        #         "Z1 - StartJourney": 1
-        #     }, self.player)
-        # def z3rule(state: CollectionState) -> bool:
-        #     return state.has_all_counts({
-        #         "Z2 - ContinueOn": 1
-        #     }, self.player)
-        # def z4rule(state: CollectionState) -> bool:
-        #     return state.has_all_counts({
-        #         "Z3 - StartTrek": 1
-        #     }, self.player)
-        # def z5rule(state: CollectionState) -> bool:
-        #     return state.has_all_counts({
-        #         "Z4 - FaceJudgement": 1
-        #     }, self.player)
+                if loc.name in self.rules:
+                    self.set_rule(loc, self.rules[loc.name])
 
-        # # These broke generation? I feel it should be equivalent to the existing rules on the regions, whatever
+        # These broke generation? I feel it should be equivalent to the existing rules on the regions, whatever
 
-        # if self.goal == "Z1":
-        #     multiworld.completion_condition[self.player] = z2rule
-        # elif self.goal == "Z2":
-        #     multiworld.completion_condition[self.player] = z3rule
-        # elif self.goal == "Z3":
-        #     multiworld.completion_condition[self.player] = z4rule
-        # elif self.goal == "Z4":
-        #     multiworld.completion_condition[self.player] = z5rule
+        if self.goal == "Z1":
+            self.set_completion_rule(self.rules["Z1 - Start Journey"])
+        elif self.goal == "Z2":
+            self.set_completion_rule(self.rules["Z2 - Continue On"])
+        elif self.goal == "Z3":
+            self.set_completion_rule(self.rules["Z3 - Start Trek"])
+        elif self.goal == "Z4":
+            self.set_completion_rule(self.rules["Z4 - Face Judgement"])
 
     def fill_slot_data(self) -> Dict[str, Any]:
         return self.options.as_dict(

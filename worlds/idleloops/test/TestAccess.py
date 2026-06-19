@@ -1,1 +1,1 @@
-from . import InscryptionTestBase
+from . import IdleLoopsTestBase

@@ -9,7 +9,7 @@ class Goal(Choice):
 
     - Zone 2: Complete "Continue On". Z2 has a bunch of content but it's mostly side paths to make you stronger for Z3. Length depends on where "Continue On" is placed.
 
-    - Zone 3: Complete "whatever it is". Should take a few days
+    - Zone 3: Complete "Start Trek". Should take a few days
 
     - Zone 4: Complete Face Judgement"""
     display_name = "Goal"
@@ -17,6 +17,15 @@ class Goal(Choice):
     option_z2 = 1
     option_z3 = 2
     option_z4 = 3
+    default = 0
+
+class Logic(Choice):
+    """Weather to include 'hard' logic, like leaving Z1 with Fight Monsters or Heal, but without Warrior or Magic Lessons respectively.
+    
+    I say "like", but that's the only effect right now."""
+    display_name = "Logic Difficulty"
+    option_normal = 0
+    option_hard = 1
     default = 0
 
 class Bonus(Choice):
@@ -37,4 +46,5 @@ class Bonus(Choice):
 @dataclass
 class IdleLoopsOptions(DeathLinkMixin, PerGameCommonOptions):
     goal: Goal
+    logic: Logic
     bonus: Bonus
