@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from Options import Choice, DeathLinkMixin, PerGameCommonOptions
+from Options import Choice, DeathLinkMixin, DefaultOnToggle, PerGameCommonOptions
 
 class Goal(Choice):
     """Defines the goal to accomplish in order to complete the randomizer.
@@ -19,14 +19,20 @@ class Goal(Choice):
     option_z4 = 3
     default = 0
 
-class Logic(Choice):
-    """Weather to include 'hard' logic, like leaving Z1 with Fight Monsters or Heal, but without Warrior or Magic Lessons respectively.
-    
-    I say "like", but that's the only effect right now."""
-    display_name = "Logic Difficulty"
-    option_normal = 0
-    option_hard = 1
-    default = 0
+# class Logic(Choice):
+#     """Whelp, turns out the one case I had for this turned out to be patched out on the new fork, so commenting this out for now."""
+#     display_name = "Logic Difficulty"
+#     option_normal = 0
+#     option_hard = 1
+#     default = 0
+
+class ProggressiveLootable(DefaultOnToggle):
+    """Shuffles in 20 extra Lootables into the pool, supplanting each Lootable to their max in turn - in *rough* order of usefulness/zone. 
+    i.e. 15 Short Quests, 8 Long Quests, 3 Locks, 10 Progressive Lootables = 20 Short Quests, 10 Long Quests, 6 Locks
+    And finding another Short Quest would in effect be one more Lock.
+    If what an item practically gives is different from its name, there will be an entry in the log.
+    When doing Z4 testing I found myself having almost no mana in Z1 a few times, and this is a way to solve that without going over the vanilla maximum."""
+    display_name = "Progressive Lootables"
 
 class Bonus(Choice):
     """How much bonus time to start with.
@@ -34,7 +40,7 @@ class Bonus(Choice):
     I recommend some time to start with, so the start isn't as much of a slog, but caution against infinite as the idea behind this game's bonus time is that time spent paused figuring out what's best for the next loop doesn't cost you anything, as you get that time back in bonus.
     If you never run out however, that time actually costs you.
     
-    But I totally get that the game is reeaaallllyyy slow without 5x speed so you do you."""
+    But I totally get that the game is reeaaallllyyy slow without 5x speed so you do you. Keep in mind that with the Gamespeed Filler item, you can easy get 5-10x gamespeed by Z4"""
     display_name = "Bonus Time"
     option_none = 0
     option_1_hour = 3600000
@@ -46,5 +52,6 @@ class Bonus(Choice):
 @dataclass
 class IdleLoopsOptions(DeathLinkMixin, PerGameCommonOptions):
     goal: Goal
-    logic: Logic
+    # logic: Logic
     bonus: Bonus
+    proggressive_lootable: ProggressiveLootable

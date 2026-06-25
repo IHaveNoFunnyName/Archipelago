@@ -1,10 +1,9 @@
-from os import name
-
 from .Options import IdleLoopsOptions, Goal
 from .Actions import all_actions, all_locations, all_items, location_name_to_id, item_to_id, IdleLoopsLocation, IdleLoopsItem, filler_item_names, Tags
 from typing import Dict, Any
 from BaseClasses import CollectionState, Region, Item, Tutorial, ItemClassification
 from worlds.AutoWorld import World, WebWorld
+from rule_builder.rules import True_
 
 # Based this file off Inscryption's world (since it was next alphabetically when i created the folder)
 # And poking around a few other worlds, most are closer to this than to APQuest
@@ -44,7 +43,7 @@ class IdleLoopsWorld(World):
 
         self.rules = {}
         for action in all_actions:
-            self.rules.update(action.rules(self.multiworld, self.player))
+            self.rules.update(action.rules())
 
         self.multiworld.push_precollected(self.create_item("Z1 - Wander"))
         # I tried with only Wander and it still was too restrictive a start
@@ -62,6 +61,21 @@ class IdleLoopsWorld(World):
             self.excluded_tags = self.excluded_tags + [Tags.Z4]
         elif self.options.goal == Goal.option_z4:
             self.goal = "Z4"
+
+        self.used_regions = {
+            "Menu": (["Z1"], {"Z1": True_()}),
+            "Z1": ([], {})
+        }
+
+        if self.goal != "Z1":
+            self.used_regions["Z1"] = (["Z2"], {"Z2": self.rules["Z1 - Start Journey"]})
+            self.used_regions["Z2"] = ([], {})
+            if self.goal != "Z2":
+                self.used_regions["Z2"] = (["Z3"], {"Z3": self.rules["Z2 - Continue On"]})
+                self.used_regions["Z3"] = ([], {})
+                if self.goal != "Z3":
+                    self.used_regions["Z3"] = (["Z4"], {"Z4": self.rules["Z3 - Start Trek"]})
+                    self.used_regions["Z4"] = ([], {})
 
         # Enough guaranteed pots to Meet People/Investigate, and buy mana to be able to get mana from locks/quests
         # Should be enough
@@ -85,16 +99,22 @@ class IdleLoopsWorld(World):
 
     def create_items(self) -> None:
         items_added = 0
-
         # Wander and Smash Pots are precollected so should are skipped here with [2::]
         # There's a better way to do this
         for item in self.all_items[2::]:
 
-            if (not item["name"][0] ==  "F") and int(item["name"][1]) > int(self.goal[1]):
-                pass
+            if (not item["name"][0] ==  "F") and (int(item["name"][1]) > int(self.goal[1])):
+                continue
 
             for _ in range(item["count"]):
                 new_item = self.create_item(item["name"])
+                self.multiworld.itempool.append(new_item)
+                items_added += 1
+        
+        # Temporary, rewrite to use tags later
+        if self.options.proggressive_lootable:
+            for _ in range(20):
+                new_item = self.create_item("Filler - Progressive Lootable")
                 self.multiworld.itempool.append(new_item)
                 items_added += 1
         
@@ -109,7 +129,7 @@ class IdleLoopsWorld(World):
             new_item = self.create_item(self.get_filler_item_name())
             self.multiworld.itempool.append(new_item)
 
-    def create_regions(self) -> None:        
+    def create_regions(self) -> None:
         dumb = {
             "Menu": "_",
             "Z1": Tags.Z1,
@@ -118,28 +138,9 @@ class IdleLoopsWorld(World):
             "Z4": Tags.Z4
         }
 
-        used_regions = {
-            "Menu": (["Z1"], {}),
-            "Z1": ([], {})
-        }
-
-        if self.goal != "Z1":
-            used_regions["Z1"] = (["Z2"], {"Z2": self.rules["Z1 - Start Journey"]})
-            used_regions["Z2"] = ([], {})
-            if self.goal != "Z2":
-                used_regions["Z2"] = (["Z3"], {"Z3": self.rules["Z2 - Continue On"]})
-                used_regions["Z3"] = ([], {})
-                if self.goal != "Z3":
-                    used_regions["Z3"] = (["Z4"], {"Z4": self.rules["Z3 - Start Trek"]})
-                    used_regions["Z4"] = ([], {})
-
-        for region_name in used_regions:
+        for region_name in self.used_regions:
             self.multiworld.regions.append(Region(region_name, self.player, self.multiworld))
-
-        for region_name, region_data in used_regions.items():
-            region_connections, region_rules = region_data
             region = self.get_region(region_name)
-            region.add_exits(region_connections, region_rules)
             region.add_locations({
                 location[0]: self.location_name_to_id[location[0]] for location in all_locations if all(tag not in self.excluded_tags for tag in location[1]) and dumb[region_name] in location[1]
             })
@@ -151,8 +152,11 @@ class IdleLoopsWorld(World):
             for loc in region.locations:
                 if loc.name in self.rules:
                     self.set_rule(loc, self.rules[loc.name])
-
-        # These broke generation? I feel it should be equivalent to the existing rules on the regions, whatever
+        
+        for region_name, region_data in self.used_regions.items():
+            region_connections, region_rules = region_data
+            for connection in region_connections:
+                self.create_entrance(self.get_region(region_name), self.get_region(connection), region_rules[connection])
 
         if self.goal == "Z1":
             self.set_completion_rule(self.rules["Z1 - Start Journey"])
