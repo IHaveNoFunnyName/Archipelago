@@ -193,8 +193,6 @@ class Filler():
     def location_list(self) -> List[str]:
         return []
 
-# Can i finagle the MRO enough to not have to subclass action? Probably! But lets be safe.
-# I think this would be better as mixins, which means using Type() in the list which looks less neat blegh
 class Z1():
     def __init__(self, tags: List[Tags]=None, **kwargs):
         super().__init__(tags=(tags or []) + [Tags.Z1], **kwargs)
@@ -260,7 +258,7 @@ all_actions = [
     Action(Z1, Limited, Requirements)                   (zone="Z1", name="Short Quest", count=range(1, 21), requirements=["Z1 - Meet People"], lootable_classification=ItemClassification.progression),
     Action(Z1, Progress)                                (zone="Z1", name="Investigate"),
     Action(Z1, Limited, Requirements)                   (zone="Z1", name="Long Quest", count=range(1, 11), requirements=["Z1 - Investigate"], lootable_classification=ItemClassification.progression),
-    Action(Z1)                                          (zone="Z1", name="Throw Party"),
+    Action(Z1)                                          (zone="Z1", name="Throw Party", rules=has_2_rep),
     Action(Z1, Skill)                                   (zone="Z1", name="Warrior Lessons", skill="Combat", count=[1] + list(range(10, 101, 10)), rules=has_2_rep),
     Action(Z1, Skill)                                   (zone="Z1", name="Mage Lessons", skill="Magic", count=[1] + list(range(10, 101, 10)), rules=has_2_rep),
     Action(Z1, Multipart, Requirements)                 (zone="Z1", name="Heal The Sick", count=[1, 2, 3, 4, 5], requirements=["Z1 - Mage Lessons"]),

@@ -79,14 +79,12 @@ class IdleLoopsWorld(World):
 
         # Enough guaranteed pots to Meet People/Investigate, and buy mana to be able to get mana from locks/quests
         # Should be enough
+        self.multiworld.local_early_items[self.player]["Z1 - Buy Mana"] = 1
+        self.multiworld.local_early_items[self.player]["Z1 - Mana Pot"] = 15
         if self.goal != "Z1":
-            self.multiworld.early_items[self.player]["Z1 - Meet People"] = 1
-            self.multiworld.early_items[self.player]["Z1 - Investigate"] = 1
-        #     self.multiworld.early_items[self.player]["Z1 - BuySupplies"] = 1
-            self.multiworld.local_early_items[self.player]["Z1 - Buy Mana"] = 1
-            self.multiworld.local_early_items[self.player]["Z1 - Mana Pot"] = 15
-        #     self.multiworld.early_items[self.player]["Z1 - Haggle"] = 1
-        #     self.multiworld.early_items[self.player]["Z1 - StartJourney"] = 1
+            pass
+        #     self.multiworld.early_items[self.player]["Z1 - Meet People"] = 1
+        #     self.multiworld.early_items[self.player]["Z1 - Investigate"] = 1
 
     # I'm quite worried about Z2+ items diluting the pool and making Z1 impossible without a loooong wait for checks, so I think all filler should help Z1
     def get_filler_item_name(self) -> str:
