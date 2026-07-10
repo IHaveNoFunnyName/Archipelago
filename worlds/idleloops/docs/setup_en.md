@@ -7,7 +7,10 @@
 ## Required Software
 
 - [The game](https://lloyd-delacroix.github.io/omsi-loops/)
-- The [Tampermonkey](https://www.tampermonkey.net/) Extension to install the mod (Greasemonkey does not work/is not supported)
+- A [Tampermonkey-like](https://www.tampermonkey.net/) Extension to install the mod (However, Greasemonkey does not work/is not supported)
+  - If you are on Chrome (And other Chromium based browsers like Brave or Edge maybe?), you might need an additional step to enable Tampermonkey after installing, shown with this rather not-error-like message
+
+    ![A very blue and in-urgent sounding error message saying "Please enable the `Allow User Scripts` extension setting."](tampermonkey_install_step.png)
 
 ## Installation
 - If you have Tampermonkey, clicking [this link](https://ihavenofunnyname.github.io/IdleLoopsAP/idle-loops-ap.user.js) should prompt you to install the mod.
