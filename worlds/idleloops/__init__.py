@@ -1,12 +1,13 @@
 from .Options import IdleLoopsOptions, Goal
 from .Actions import all_actions, all_locations, all_items, location_name_to_id, item_to_id, IdleLoopsLocation, IdleLoopsItem, filler_item_names, Tags
-from typing import Dict, Any
+from typing import Dict, Any, List
 from BaseClasses import CollectionState, Region, Item, Tutorial, ItemClassification
 from worlds.AutoWorld import World, WebWorld
 from rule_builder.rules import True_
 
 # Based this file off Inscryption's world (since it was next alphabetically when i created the folder)
 # And poking around a few other worlds, most are closer to this than to APQuest
+
 
 class IdleLoopsWeb(WebWorld):
     theme = "dirt"
@@ -81,14 +82,25 @@ class IdleLoopsWorld(World):
         # Should be enough
         self.multiworld.local_early_items[self.player]["Z1 - Buy Mana"] = 1
         self.multiworld.local_early_items[self.player]["Z1 - Mana Pot"] = 15
-        if self.goal != "Z1":
-            pass
-        #     self.multiworld.early_items[self.player]["Z1 - Meet People"] = 1
-        #     self.multiworld.early_items[self.player]["Z1 - Investigate"] = 1
+        self.multiworld.early_items[self.player]["Z1 - Meet People"] = 1
+        self.multiworld.early_items[self.player]["Z1 - Investigate"] = 1
 
-    # I'm quite worried about Z2+ items diluting the pool and making Z1 impossible without a loooong wait for checks, so I think all filler should help Z1
-    def get_filler_item_name(self) -> str:
-        return self.random.choice(filler_item_names)
+    def get_filler_item_names(self, count) -> List[str]:
+
+        filler_weight = (100 - self.options.filler_nothing) / 100
+        included_filler_count = self.options.filler_extra_mana_pot + self.options.filler_starting_mana + self.options.filler_starting_gold
+        filler_weights = [
+            self.options.filler_extra_mana_pot * filler_weight / included_filler_count,
+            self.options.filler_starting_mana * filler_weight / included_filler_count,
+            self.options.filler_starting_gold * filler_weight / included_filler_count,
+            self.options.filler_nothing / 100
+        ]
+
+        return self.random.choices(
+            ["Z1 - Mana Pot", "Filler - 50 Starting Mana", "Filler - 1 Starting Gold", "Filler - Nothing"],
+            weights=filler_weights,
+            k=count
+        )
 
     def create_item(self, name: str) -> Item:
         item_id = self.item_name_to_id[name]
@@ -101,30 +113,31 @@ class IdleLoopsWorld(World):
         # There's a better way to do this
         for item in self.all_items[2::]:
 
-            if (not item["name"][0] ==  "F") and (int(item["name"][1]) > int(self.goal[1])):
+            if (item["name"][0] == "F") or (int(item["name"][1]) > int(self.goal[1])):
                 continue
 
             for _ in range(item["count"]):
                 new_item = self.create_item(item["name"])
                 self.multiworld.itempool.append(new_item)
                 items_added += 1
-        
+
         # Temporary, rewrite to use tags later
-        if self.options.proggressive_lootable:
+        # Or well, not tags, a filter defined per item that takes options
+        if self.options.progressive_lootable:
             for _ in range(20):
                 new_item = self.create_item("Filler - Progressive Lootable")
                 self.multiworld.itempool.append(new_item)
                 items_added += 1
-        
+
         used_locations = []
         for location in all_locations:
             if all(tag not in self.excluded_tags for tag in location[1]):
                 used_locations.append(location)
 
         filler_count = len(used_locations) - items_added
-
-        for _ in range(filler_count):
-            new_item = self.create_item(self.get_filler_item_name())
+        names = self.get_filler_item_names(filler_count)
+        for name in names:
+            new_item = self.create_item(name)
             self.multiworld.itempool.append(new_item)
 
     def create_regions(self) -> None:
@@ -144,13 +157,12 @@ class IdleLoopsWorld(World):
             })
 
     def set_rules(self) -> None:
-        
         multiworld = self.multiworld
         for region in multiworld.get_regions(self.player):
             for loc in region.locations:
                 if loc.name in self.rules:
                     self.set_rule(loc, self.rules[loc.name])
-        
+
         for region_name, region_data in self.used_regions.items():
             region_connections, region_rules = region_data
             for connection in region_connections:
