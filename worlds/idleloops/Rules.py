@@ -3,23 +3,34 @@ from math import floor
 from typing import override
 
 from BaseClasses import CollectionState
-from rule_builder.rules import Has, Rule
+from rule_builder.options import OptionFilter
+from rule_builder.rules import Has, HasFromList, Rule, True_
+from worlds.idleloops.Actions import IdleLoopsOptionsClass
 from worlds.stardew_valley.stardew_rule import state
 
-def has_mana_from_state(mana_goal:int, state: CollectionState, player: int) -> int:
+HasSoulstones = (
+    (Has("Z1 - Small Dungeon") & (Has("Z1 - Mage Lessons") | Has("Z1 - Warrior Lessons"))) |
+    (Has("Z3 - Large Dungeon") & Has("Z2 - Continue On") & Has("Z3 - Adventure Guild") & Has("Z3 - Gather Team") & Has("Z1 - Warrior Lessons") & Has("Z1 - Mage Lessons")) |
+    (Has("Z2 - Continue On") & Has("Z3 - Start Trek") & Has("Z3 - Buy Pickaxe") & Has("Z4 - Soulstone"))
+)
+
+HasGlassesLogic = Has("Z1 - Buy Glasses", options=[OptionFilter(IdleLoopsOptionsClass.logic_glasses, 1)], filtered_resolution=True)
+
+
+def has_mana_from_state(mana_goal: int, fight_segments: int, state: CollectionState, player: int) -> int:
     # Simulate gaining gold with the most effecient action then selling it for mana
     # Fight Monsters is considered at 9 segments/180 gold in one action
     # You usually wouldn't grind that much combat in Z1 (the only place this rule should be used - you should always have enough mana after that)
     # But if you somehow need to push for it you can.
     mana = 250 + (state.count("Filler - 50 Starting Mana", player) + state.count("Filler - 1 Starting Gold", player) + state.count("Z1 - Mana Pot", player)) * 50
-    #TODO: Hard logic here for (Lock > Buy Mana)xN if you don't have enough mana for SQuest.
+    # TODO: Hard logic here for (Lock > Buy Mana)xN if you don't have enough mana for SQuest.
     # This would put 100% of Meet People/Investigate into logic with doing them at 0.5/min
     # Scary
     # Hopefully one of those % is a mana item smile
-    
+
     # We need to calculate Progresive Lootables to know how many SQuests we have
     # Simpler version of the client .js logic, if we have enough Progressive Lootables to cap SQuests, we have all the mana we ever need for Z1 actions
-    # So we can ignore later lootables 
+    # So we can ignore later lootables
     extra = state.count("Filler - Progressive Lootable", player)
     old_extra = extra
     LQuests = state.count("Z1 - Long Quest", player)
@@ -31,8 +42,8 @@ def has_mana_from_state(mana_goal:int, state: CollectionState, player: int) -> i
             LQuests += old_extra
     rep = LQuests
     SQuests = state.count("Z1 - Short Quest", player) + max(extra, 0)
-    
-    #TODO: Abstract/generalise?
+
+    # TODO: Abstract/generalise?
     # Eh, not worth
     while SQuests > 0:
         # Buy Mana
@@ -66,7 +77,7 @@ def has_mana_from_state(mana_goal:int, state: CollectionState, player: int) -> i
     # I guess to make them do something I should simulate stat mana reduction, saying they give 50 mana per instead
     # Surely this won't cause problems, right? Imagine a seed that gets like a million herbs, a couple pots and one LQuest
     # With the 50 mana from LQuest needed to do Meet People or whatever
-    # If that happens i think 
+    # If that happens i think
     while LQuests > 0:
         mana -= 100
 
@@ -82,30 +93,36 @@ def has_mana_from_state(mana_goal:int, state: CollectionState, player: int) -> i
 
     if state.has("Z1 - Fight Monsters", player) and state.has("Z1 - Warrior Training", player) and rep >= 2:
         if mana > 2100:
-            mana += 6900
-    
+            mana += (fight_segments * 20 * 50) - 2100
+
     return mana > mana_goal
+
 
 @dataclass
 class HasMana(Rule["IdleLoopsWorld"], game="Idle Loops"):
     mana_goal: int
+
     @override
-    def _instantiate(self, world: "IdleLoopsWorld") -> Rule.Resolved: 
-        return self.Resolved(self.mana_goal, player=world.player, caching_enabled=False)
+    def _instantiate(self, world: "IdleLoopsWorld") -> Rule.Resolved:
+        return self.Resolved(self.mana_goal, fight_segments=int(world.options.logic_fight), player=world.player, caching_enabled=False)
 
     class Resolved(Rule.Resolved):
         mana_goal: int
-        
+        fight_segments: int
+
         @override
         def _evaluate(self, state: CollectionState) -> bool:
-            return has_mana_from_state(self.mana_goal, state, self.player)
+            return has_mana_from_state(self.mana_goal, self.fight_segments, state, self.player)
+
 
 class JourneyRule(Rule["IdleLoopsWorld"], game="Idle Loops"):
     @override
     def _instantiate(self, world: "IdleLoopsWorld") -> Rule.Resolved:
-        return self.Resolved(player=world.player, caching_enabled=False)
+        return self.Resolved(player=world.player, fight_segments=int(world.options.logic_fight), caching_enabled=False)
 
     class Resolved(Rule.Resolved):
+        fight_segments: int
+
         @override
         def _evaluate(self, state: CollectionState) -> bool:
             if not (state.has("Z1 - Start Journey", self.player) and state.has("Z1 - Buy Supplies", self.player)):
@@ -136,4 +153,4 @@ class JourneyRule(Rule["IdleLoopsWorld"], game="Idle Loops"):
 
             # Buy Supplies + Start Journey + 15 haggles + extra mana (Well, mana in it's unbought gold form) for each haggle under 15
             # I want to do this but clearly it won't work as it's not passed world or player or state
-            return has_mana_from_state(1200 + 1500 + ((15 - haggles) * 900), state, self.player)
+            return has_mana_from_state(1200 + 1500 + ((15 - haggles) * 900), self.fight_segments, state, self.player)

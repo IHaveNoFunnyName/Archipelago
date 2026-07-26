@@ -1,7 +1,7 @@
 from .Options import IdleLoopsOptions, Goal
-from .Actions import all_actions, all_locations, all_items, location_name_to_id, item_to_id, IdleLoopsLocation, IdleLoopsItem, filler_item_names, Tags
+from .Actions import all_actions, all_locations, all_items, location_name_to_id, item_to_id, IdleLoopsItem
 from typing import Dict, Any, List
-from BaseClasses import CollectionState, Region, Item, Tutorial, ItemClassification
+from BaseClasses import Region, Item, Tutorial
 from worlds.AutoWorld import World, WebWorld
 from rule_builder.rules import True_
 
@@ -40,28 +40,39 @@ class IdleLoopsWorld(World):
     location_name_to_id = location_name_to_id
 
     def generate_early(self) -> None:
+
+        self.goal = "Z" + str(self.options.goal + 1)
+
+        for option in self.options.__annotations__:
+            option_value = getattr(self.options, option)
+            if option_value == -1:
+                option_value.value = self.options.__annotations__[option].defaults[self.options.goal]
+
         self.all_items = [item.copy() for item in all_items]
 
         self.rules = {}
         for action in all_actions:
-            self.rules.update(action.rules())
+            self.rules.update(action.rules(self.options))
 
         self.multiworld.push_precollected(self.create_item("Z1 - Wander"))
         # I tried with only Wander and it still was too restrictive a start
         self.multiworld.push_precollected(self.create_item("Z1 - Mana Pot - Search"))
-        # Handle Options
-        self.excluded_tags = []
-        if self.options.goal == Goal.option_z1:
-            self.goal = "Z1"
-            self.excluded_tags = self.excluded_tags + [Tags.Z2, Tags.Z3, Tags.Z4]
-        elif self.options.goal == Goal.option_z2:
-            self.goal = "Z2"
-            self.excluded_tags = self.excluded_tags + [Tags.Z3, Tags.Z4]
-        elif self.options.goal == Goal.option_z3:
-            self.goal = "Z3"
-            self.excluded_tags = self.excluded_tags + [Tags.Z4]
-        elif self.options.goal == Goal.option_z4:
-            self.goal = "Z4"
+
+        # TODO: Refactor Actions.py to also export a list of limited actions to use here
+        if not self.options.item_search:
+            for action in ["Z1 - Lock", "Z1 - Short Quest", "Z1 - Long Quest", "Z2 - Wild Mana", "Z2 - Herb", "Z2 - Hunt", "Z3 - Gamble", "Z4 - Mana Geyser", "Z4 - Soulstone", "Z4 - Artifact"]:
+                self.multiworld.push_precollected(self.create_item(f"{action} - Search"))
+
+        if not self.options.item_shop:
+            if self.options.location_z1_shop > 0:
+                self.multiworld.push_precollected(self.create_item("Z1 - AP Shop"))
+            if self.options.location_z3_shop > 0:
+                self.multiworld.push_precollected(self.create_item("Z3 - AP Shop"))
+
+        self.multiworld.local_early_items[self.player]["Z1 - Buy Mana"] = 1
+        if self.options.sphere1:
+            self.multiworld.early_items[self.player]["Z1 - Meet People"] = 1
+            self.multiworld.early_items[self.player]["Z1 - Investigate"] = 1
 
         self.used_regions = {
             "Menu": (["Z1"], {"Z1": True_()}),
@@ -78,12 +89,8 @@ class IdleLoopsWorld(World):
                     self.used_regions["Z3"] = (["Z4"], {"Z4": self.rules["Z3 - Start Trek"]})
                     self.used_regions["Z4"] = ([], {})
 
-        # Enough guaranteed pots to Meet People/Investigate, and buy mana to be able to get mana from locks/quests
-        # Should be enough
-        self.multiworld.local_early_items[self.player]["Z1 - Buy Mana"] = 1
-        self.multiworld.local_early_items[self.player]["Z1 - Mana Pot"] = 15
-        self.multiworld.early_items[self.player]["Z1 - Meet People"] = 1
-        self.multiworld.early_items[self.player]["Z1 - Investigate"] = 1
+        self.used_locations = [(name, region) for action in all_actions for (name, region) in action.included_locations(self.options) if region in self.used_regions]
+        self.used_items = [name for action in all_actions for name in action.included_items(self.options)]
 
     def get_filler_item_names(self, count) -> List[str]:
 
@@ -121,40 +128,21 @@ class IdleLoopsWorld(World):
                 self.multiworld.itempool.append(new_item)
                 items_added += 1
 
-        # Temporary, rewrite to use tags later
-        # Or well, not tags, a filter defined per item that takes options
-        if self.options.progressive_lootable:
-            for _ in range(20):
-                new_item = self.create_item("Filler - Progressive Lootable")
-                self.multiworld.itempool.append(new_item)
-                items_added += 1
-
-        used_locations = []
-        for location in all_locations:
-            if all(tag not in self.excluded_tags for tag in location[1]):
-                used_locations.append(location)
-
-        filler_count = len(used_locations) - items_added
+        filler_count = len(self.used_locations) - items_added
         names = self.get_filler_item_names(filler_count)
         for name in names:
             new_item = self.create_item(name)
             self.multiworld.itempool.append(new_item)
 
     def create_regions(self) -> None:
-        dumb = {
-            "Menu": "_",
-            "Z1": Tags.Z1,
-            "Z2": Tags.Z2,
-            "Z3": Tags.Z3,
-            "Z4": Tags.Z4
-        }
-
+        regions = {}
         for region_name in self.used_regions:
-            self.multiworld.regions.append(Region(region_name, self.player, self.multiworld))
-            region = self.get_region(region_name)
-            region.add_locations({
-                location[0]: self.location_name_to_id[location[0]] for location in all_locations if all(tag not in self.excluded_tags for tag in location[1]) and dumb[region_name] in location[1]
-            })
+            region = Region(region_name, self.player, self.multiworld)
+            self.multiworld.regions.append(region)
+            regions[region_name] = region
+
+        for location, region_name in self.used_locations:
+            regions[region_name].add_locations({location: location_name_to_id[location]})
 
     def set_rules(self) -> None:
         multiworld = self.multiworld
@@ -180,5 +168,10 @@ class IdleLoopsWorld(World):
     def fill_slot_data(self) -> Dict[str, Any]:
         return self.options.as_dict(
             "goal",
-            "bonus"
+            "game_speed",
+            "stat_exp_mult",
+            "skill_exp_mult",
+            "bonus",
+            "soul_link",
+            "ui_crime"
         )

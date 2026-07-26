@@ -1,9 +1,5 @@
 # Idle Loops Randomizer Setup Guide
 
-## .yaml Configuration
-
-- This game has a restrictive start, middle, and end, where it never really opens up and each progression item only unlocks a handful of locations. As such, any progression balancing below normal has caused generation issues for me, but these are presumably less of a problem for multiworlds.
-
 ## Required Software
 
 - [The game](https://lloyd-delacroix.github.io/omsi-loops/)

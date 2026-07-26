@@ -1,45 +1,28 @@
 from __future__ import annotations
+import json
 
-from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Tuple
-from collections.abc import Sequence
+from typing import Dict, List, Tuple
 
-from rule_builder.rules import CanReachLocation, Rule
+from BaseClasses import ItemClassification, Location, Item
+from rule_builder.rules import Has, HasAll, HasFromList, True_, Rule
+
 from .Options import IdleLoopsOptions
-from .Rules import HasMana, JourneyRule
+from .Rules import HasGlassesLogic, HasMana, HasSoulstones, JourneyRule
+
+# This does nothing, just allows me to in code disambiguate when i'm using
+# the class: for grabbing static max/min/etc values
+# vs
+# an instance: getting actual user option values
+IdleLoopsOptionsClass = IdleLoopsOptions
 
 
-if __name__ == "__main__":
-    import json
+class IdleLoopsLocation(Location):
+    game = "Idle Loops"
 
-    class ItemClassification:
-        useful = "useful"
-        filler = "filler"
-        progression = "progression"
 
-    class OptionFilter:
-        def __init__(self, option_class, option_value):
-            pass
-    # class Logic:
-    #     option_normal = 0
+class IdleLoopsItem(Item):
+    game = "Idle Loops"
 
-    class Has:
-        def __init__(self, item_name):
-            pass
-    HasAll, True_, HasFromList = Has, Has, Has, Has
-
-else:
-    from BaseClasses import ItemClassification, Location, Item
-    from rule_builder.rules import Has, HasAll, HasFromList, True_
-    from rule_builder.options import OptionFilter
-    # from .Options import Logic
-
-    # Considering how tightly coupled Loctaions, Items and Rules are in this game, it makes sense to see them as Actions that generate said Locations, Items and Rules.
-
-    class IdleLoopsLocation(Location):
-        game = "Idle Loops"
-
-    class IdleLoopsItem(Item):
-        game = "Idle Loops"
 
 location_id = 1
 location_name_to_id = {}
@@ -50,54 +33,62 @@ all_locations = []
 all_items = []
 
 
+# Considering how tightly coupled Loctaions, Items and Rules are in this game, it makes sense to see them as Actions that generate said Locations, Items and Rules.
 class Action:
+    """By default generates a single Location and Item, with a rule that requires the Item to complete the Location.
+    And an option to add more Rules.
+
+    This can be extended with Mixins, but if you're reading this you kinda already know that you have eyes."""
+
     # I don't know enough about python's type hinting to get this to return something that the IDE can pick up on all kwargs with
     # Or rather, i didn't even try, that's more accurate
-    def __new__(self, *args: type) -> type[_Action]:
+    def __new__(self, *args: type) -> _Action:
         name = "_".join([x.__name__ for x in args])
         return type(name, args + (_Action,), {})
 
 
 class _Action:
-    def __init__(self, zone: str, name: str, internal_name: str, classification: ItemClassification = ItemClassification.progression, rule: Rule = None, base_count: int = 1):
+    def __init__(self, zone: str, name: str, internal_name: str = None, classification: ItemClassification = ItemClassification.progression, rule: Rule = None, override_rule: Rule = None, base_count: int = 1):
         self.zone = zone
         self.region = "Z1"
         self.name = name
-        self.internal_name = internal_name
+        self.internal_name = name if internal_name is None else internal_name
         self.classification = classification
         self.rule = rule
+        self.override_rule = override_rule
         self.base_count = base_count
 
     def base_location_list(self) -> List[str]:
-        return [(self.zone, self.name)]
+        return [self.zone + " - " + self.name]
 
     def location_list(self) -> List[str]:
         return self.base_location_list()
 
     def all_locations(self, location_id, location_name_to_id) -> Tuple[List[str], int]:
-        name_parts = self.location_list()
         output = []
-        for name_parts in name_parts:
-            name = " - ".join(name_parts)
+        for name in self.location_list():
             location_name_to_id[name] = location_id
             output.append(name)
             location_id += 1
         return (output, location_id)
 
-    def included_locations(self, options: IdleLoopsOptions) -> List[Tuple[int, int]]:
+    def included_locations(self, options: IdleLoopsOptions) -> List[Tuple[int, str]]:
         """
         Returns a list of (location ID, region).
         """
-        return [(location_name_to_id[name], self.region) for name in self.location_list()]
+        return [(name, self.region) for name in self.location_list()]
 
     def base_rule(self) -> Rule:
         return Has(self.unlock_item_name())
 
-    def rules(self) -> Dict[str, callable]:
-        if self.rules_override is not None:
-            return self.rules_override(self)
-        rule = self.rule if self.rule is not None else True_()
-        return {name: self.base_rule() & rule for name in self.location_list()}
+    def rules(self, options: IdleLoopsOptions) -> Dict[str, callable]:
+        rule = self.base_rule()
+        if self.override_rule is not None:
+            rule = self.override_rule
+        else:
+            if self.rule is not None:
+                rule = rule & self.rule
+        return {name: rule for name in self.location_list()}
 
     def unlock_item_name(self) -> str:
         """
@@ -131,8 +122,13 @@ class _Action:
     def included_items(self, options: IdleLoopsOptions) -> List[int]:
         return self.item_list()
 
+    def name_map(self, action_map: Dict[str, str], skill_map: Dict[str, str]) -> None:
+        action_map[self.name] = self.internal_name
+
 
 class Start():
+    """Mixin that removes the base rule and doesn't add it's unlock item to the pool (with the intention of it being precollected), basically "This is Sphere 1"."""
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.base_count = 0
@@ -142,44 +138,76 @@ class Start():
 
 
 class Progress():
+    """Mixin for Actions with a progress bar, adds locations throughout completion (if that option is enabled)."""
     progress_locations = ["1", "5", "10", "15", "20", "25", "30", "40", "50", "60", "70", "80", "90", "95", "99", "100"]
 
     def locations_progress_list(self) -> List[str]:
-        return [(self.zone, self.name, progress) for progress in self.progress_locations]
+        return [f"{self.zone} - {self.name} - {progress}%" for progress in self.progress_locations]
 
     def location_list(self) -> List[str]:
         return self.base_location_list() + self.locations_progress_list()
 
     def included_locations(self, options: IdleLoopsOptions) -> List[Tuple[int, int]]:
         if options.location_progress:
-            return [(location_name_to_id[name], self.region) for name in self.locations_progress_list()]
+            return [(name, self.region) for name in self.locations_progress_list()]
         else:
-            return [(location_name_to_id[name], self.region) for name in self.base_location_list()]
+            return [(name, self.region) for name in self.base_location_list()]
+
+    # A bit hacky and unintuitivey, I made override_rule for the edge case of Throw Party giving Meet People progress (overriding base_rule).
+    # (And potentially other similar cases in the future?)
+    # Which then itself creates another edge case where Throw Party *doesn't* finish the Meet People action.
+    # (which is a location when the progress option is off)
+    # So ignore the override if progress locations are off.
+    def rules(self, options: IdleLoopsOptions) -> Dict[str, callable]:
+        if options.location_progress:
+            return super().rules(options)
+        rule = self.base_rule()
+        if self.rule is not None:
+            rule = rule & self.rule
+        return {name: rule for name in self.location_list()}
 
 
-class Count():
-    def __init__(self, count: Sequence[str | int], **kwargs):
+class LimitedLocations():
+    """This Mixin was split off from Limited, as Shop worked like the locations part of Limited without the items.
+
+    Added kwargs:
+
+    count: int = The number of locations to add."""
+
+    def __init__(self, count: int, **kwargs):
         super().__init__(**kwargs)
         self.count = count
 
-
-class Limited(Count):
-    def __init__(self, item_count: int = None, lootable_classification: ItemClassification = ItemClassification.useful, **kwargs):
-        super().__init__(**kwargs)
-        self.lootable_classification = lootable_classification
-        self.item_count = item_count if item_count is not None else len(self.count)
-
     def location_list(self) -> List[str]:
-        return [f"{self.zone} - {self.name} - #{i}" for i in self.count]
+        return [f"{self.zone} - {self.name} - #{i}" for i in range(1, self.count + 1)]
+
+
+class Limited(LimitedLocations):
+    """Mixin that adds #x locations and items for actions, and a required " - Search" item (if that option is enabled)
+
+    Added kwargs:
+
+    count: int = The max number of locations/items to add.
+
+    items: int = The max number of items to add (defaults to count).
+
+    option: str = An attr of the option class that controls how many locations/items to include in a game."""
+
+    def __init__(self, count: int, items: int = None, option: str = None, lootable_classification: ItemClassification = ItemClassification.progression, **kwargs):
+        super().__init__(count=count, **kwargs)
+        self.lootable_classification = lootable_classification
+        self.items = items if items is not None else count
+        self.option = option
 
     def unlock_item_name(self) -> str:
         return f"{self.zone} - {self.name} - Search"
 
-    def extra_items(self) -> List[str]:
+    def extra_items(self, options: IdleLoopsOptions = None) -> List[str]:
+        count = getattr(options, "item_" + self.option) if self.option else self.items
         return [{
             "name": f"{self.zone} - {self.name}",
             "classification": self.lootable_classification,
-            "count": self.item_count
+            "count": count
         }]
 
     def included_items(self, options: IdleLoopsOptions) -> List[int]:
@@ -190,330 +218,459 @@ class Limited(Count):
 
 
 class Batched(Limited):
+    """Mixin that works like Limited but can optionally batch its locations/items.
+
+    Added kwargs:
+
+    All the Limited kwargs
+
+    batch_size: int = The batch size. What more do you want from me that name is the definition of self documenting code. (defaults to 10)."""
+
     def __init__(self, batch_size: int = 10, **kwargs):
         super().__init__(**kwargs)
         self.batch_size = batch_size
 
     def batched_location_list(self) -> List[str]:
-        return [f"{self.zone} - x{self.batch_size} {self.name} - #{i}" for i in range(1, (len(self.count) + self.batch_size - 1) // self.batch_size + 1)]
+        return [f"{self.zone} - x{self.batch_size} {self.name} - #{i}" for i in range(1, (self.count + self.batch_size - 1) // self.batch_size + 1)]
 
     def location_list(self) -> List[str]:
         return super().location_list() + self.batched_location_list()
 
     def included_locations(self, options: IdleLoopsOptions) -> List[Tuple[int, int]]:
         if options.batch_z2:
-            return [(location_name_to_id[name], self.region) for name in self.batched_location_list()]
+            return [(name, self.region) for name in self.batched_location_list()]
         else:
-            # It's not the cleanest to copy the list definition from the parent, but we overwrite location_list so super won't work.
-            return [(location_name_to_id[name], self.region) for name in [f"{self.zone} - {self.name} - #{i}" for i in self.count]]
+            return [(name, self.region) for name in super().location_list()]
+
+    def batched_items(self) -> List[str]:
+        return [{
+            "name": f"{self.zone} - x{self.batch_size} {self.name}",
+            "classification": self.lootable_classification,
+            "count": self.items // self.batch_size
+        }]
+
+    def extra_items(self) -> List[str]:
+        return super().extra_items() + self.batched_items()
+
+    def included_items(self, options: IdleLoopsOptions) -> List[int]:
+        output = []
+        if options.item_search:
+            output += self.item_list()
+        if options.batch_z2:
+            output += self.batched_items()
+        else:
+            output += super().extra_items()
+        return output
 
 
-class Multipart(Count):
-    def location_list(self) -> List[str]:
-        return [f"{self.zone} - {self.name} - Completion #{i}" for i in self.count]
+class Shop(LimitedLocations):
+    """Mixin that adds #x locations with ramping costs with equal steps (rounded down) between min and max
 
+    Added kwargs:
 
-class Skill(Count):
-    skill_locations = [1] + list(range(10, 501, 10))
+    min: int = Starting cost
 
-    def __init__(self, skill: str, **kwargs):
+    max: int = Ending cost"""
+
+    def __init__(self, min: int, max: int, **kwargs):
+        kwargs["count"] = IdleLoopsOptionsClass.__annotations__["location_" + kwargs["option"]].range_end
         super().__init__(**kwargs)
-        self.skill = skill
-
-    def location_list(self) -> List[str]:
-        return [f"{self.skill} - Level {n}" for n in self.skill_locations]
+        self.min = min
+        self.max = max
 
     def included_locations(self, options: IdleLoopsOptions) -> List[Tuple[int, int]]:
-        region = 1
+        count = getattr(options, "location_" + self.option)
+        return [(f"{self.zone} - {self.name} - #{i}", self.region) for i in range(1, count + 1)]
+
+    def rules(self, options: IdleLoopsOptions) -> Dict[str, callable]:
+        # No mana logic after Z1
+        if self.max > 300:
+            return super().rules(options)
+        num = getattr(options, "location_" + self.option)
+        current = self.min + 1
+        step = (self.max - self.min) / (num - 1)
+        output = {}
+        for name in self.location_list():
+            rule = HasMana(int(((current // 10) * 500) + 200))
+            current += step
+            output[name] = self.base_rule() & rule & (self.rule if self.rule is not None else True_())
+        return output
+
+
+class Multipart():
+    """Mixin for Actions that can be completed multiple times, with a location each completion.
+    It's a bit of a misnomer but all of those actions (Well, up to Z4) are Multipart in game, so...
+
+    Added kwargs:
+
+    option: str = An attr of the option class that controls how many locations to include in a game."""
+
+    def __init__(self, option: str = None, **kwargs):
+        super().__init__(**kwargs)
+        self.option = option
+        self.location_numbers = list(range(1, IdleLoopsOptionsClass.__annotations__["location_" + self.option].range_end + 1)) if option else []
+
+    def location_list(self) -> List[str]:
+        return [f"{self.zone} - {self.name} - Completion #{i}" for i in self.location_numbers]
+
+    def included_locations(self, options: IdleLoopsOptions) -> List[Tuple[int, int]]:
+        if not self.option:
+            return []
+        region = int(self.region[-1])
         locations = []
-        for level in self.skill_locations:
-            if level > options.location_skill:
+        for location in self.location_numbers:
+            if location > getattr(options, "location_" + self.option):
                 break
-            # Goal is 0-indexed so we want this cap to be one above
-            if level in [50, 100, 200, 300] and region <= options.goal:
+            if location > IdleLoopsOptionsClass.__annotations__["location_" + self.option].defaults[region - 1] and region <= options.goal:
                 region += 1
-            locations.append((location_name_to_id[f"{self.skill} - Level {level}"], region))
+            locations.append((f"{self.zone} - {self.name} - Completion #{location}", "Z" + str(region)))
         return locations
 
 
-class Buff(Skill):
-    def __init__(self, buff: str, **kwargs):
-        super().__init__(skill=buff, **kwargs)
+class AddRule():
+    """Mixin that adds a second rule part way through its locations
 
-# Stops this action from adding items to the pool
-# This will break later with unlocking more limited actions through like survye
-# (and technically now with forest and thicket/flowers but whatever i'll keep those &'ed)
+    Added kwargs:
+
+    add_rule_at: int = The first location to add the second rule to
+
+    rule2: Rule = The second rule to &"""
+
+    def __init__(self, add_rule_at: int, rule2: Rule, **kwargs):
+        super().__init__(**kwargs)
+        self.add_rule_at = add_rule_at
+        self.rule2 = rule2
+
+    def rules(self, options: IdleLoopsOptions) -> Dict[str, callable]:
+        output = {}
+        for i, location in enumerate(self.location_list(), 1):
+            if i >= self.add_rule_at:
+                output.update({location: self.base_rule() & (self.rule if self.rule is not None else True_()) & self.rule2})
+            else:
+                output.update({location: self.base_rule() & (self.rule if self.rule is not None else True_())})
+        return output
 
 
-class OnlyLocations():
-    def items(self, item_id, item_to_id) -> Tuple[List[str], int]:
-        return ([], item_id)
+class Skill():
+    """Mixin that adds a bunch of locations for a Skill (Or Buff), and the action that unlocks it. It made less sense to keep them separate.
+    Maybe swapping it so name is the action name like all other actions and then skill_name in addition makes more sense, but whatever.
+    Oh wait, but then i'd have to rename them for buffs heh.
+
+    Added kwargs:
+
+    action_name: str = Like name normally
+
+    internal_action_name: str = Like internal_name normally
+
+    option: str = An attr of the option class that controls both the max locations and how many to include in a game.
+
+    every: int = Put a location every x levels. Probably will replace this behaviour in later versions as in later zones you can get obscene levels
+    So the gaps will have to increase over time."""
+
+    def __init__(self, action_name: str = None, internal_action_name: str = None, option: str = "skill", every: int = 10, **kwargs):
+        super().__init__(**kwargs)
+        self.action_name = action_name if action_name is not None else self.name
+        self.internal_action_name = internal_action_name if internal_action_name is not None else self.action_name
+        self.option = option
+        self.location_numbers = ([1] if every > 1 else []) + list(range(every, IdleLoopsOptionsClass.__annotations__["location_" + self.option].range_end + 1, every))
+
+    def unlock_item_name(self) -> str:
+        return f"{self.zone} - {self.action_name}"
+
+    def location_list(self) -> List[str]:
+        return [self.unlock_item_name()] + [f"{self.name} - Level {n}" for n in self.location_numbers]
+
+    def included_locations(self, options: IdleLoopsOptions) -> List[Tuple[int, int]]:
+        option_value = getattr(options, "location_" + self.option)
+        if option_value == 0:
+            return [(f"{self.zone} - {self.action_name}", self.region)]
+        region = int(self.region[-1])
+
+        locations = []
+        for level in self.location_numbers:
+            if level > option_value:
+                break
+            if level > IdleLoopsOptionsClass.__annotations__["location_" + self.option].defaults[region - 1] and region <= options.goal:
+                region += 1
+            locations.append((f"{self.name} - Level {level}", "Z" + str(region)))
+        return locations
+
+    def name_map(self, action_map: Dict[str, str], skill_map: Dict[str, str]) -> None:
+        action_map[self.action_name] = self.internal_action_name
+        skill_map[self.name] = self.internal_name
+
+
+Buff = Skill
 
 
 class Filler():
+    """Mixin for filler items, they don't have any locations.
+
+    Added kwargs:
+
+    option: str = An attr of the option class that controls how many items to include in a game. Defaults to 0
+    (the ones with 0 are intended to be added by the World to balance locations and items)"""
+
+    def __init__(self, option: str = None, **kwargs):
+        super().__init__(zone="Filler", **kwargs)
+        self.option = option
+
     def location_list(self) -> List[str]:
         return []
 
+    def included_items(self, options: IdleLoopsOptions = None) -> List[str]:
+        count = getattr(options, "filler_" + self.option) if self.option else 0
+        return [{
+            "name": f"{self.zone} - {self.name}",
+            "classification": self.classification,
+            "count": count
+        }]
+
 
 class Z2():
+    """Puts locations into the Z2 region, requiring the rule put on the region and excluding it from games with an earlier goal."""
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.region = "Z2"
 
 
 class Z3():
+    """Puts locations into the Z3 region, requiring the rule put on the region and excluding it from games with an earlier goal."""
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.region = "Z3"
 
 
 class Z4():
+    """Puts locations into the Z4 region, requiring the rule put on the region and excluding it from games with an earlier goal."""
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.region = "Z4"
-
-
-def has_2_rep(self: _Action) -> Dict[str, callable]:
-    rule = Has(self.unlock_item_name()) & HasFromList("Z1 - Long Quest", "Filler - Progressive Lootable", count=2)
-    return {name: rule for name in self.location_list()}
-
-# Can get to +-50 rep. -50 path has haggle and PM to have enough mana to do 50 Dark Magic actions
-
-
-def judgementRules(self: _Action) -> Dict[str, callable]:
-    rule = Has("Z4 - Face Judgement") & ((Has("Z1 - Heal The Sick") & Has("Z1 - Mage Lessons")) | (Has("Z2 - Talk To Witch") & Has("Z2 - Dark Magic") & Has("Z1 - Haggle") & Has("Z2 - Practical Magic")))
-    return {name: rule for name in self.location_list()}
 
 
 # ofc filler actions are only items but calling it actions makes it fit with the others
 filler_actions = [
     Action(Filler)(name="50 Starting Mana"),
     Action(Filler)(name="1 Starting Gold"),
-    Action(Filler)(name="+0.1 Game Speed", classification=ItemClassification.filler),
-    Action(Filler)(name="+0.1 Exp Multiplier", classification=ItemClassification.filler),
+    # Progressive lootable acts as an extra count for limited actions, (up to their usual max, for when you don't have them capped) in rough order of usefullness/progression
+    # Long Quests (up to 2) > Short Quests > Long Quests (Rest) > Locks > Wild Mana ... > n-1 > Mana Pot
+    Action(Filler)(name="Progressive Lootable", option="progressive_lootable"),
+    Action(Filler)(name="+0.1 Game Speed", option="game_speed", classification=ItemClassification.filler),
+    Action(Filler)(name="+0.1 Exp Multiplier", option="exp_mult", classification=ItemClassification.filler),
     Action(Filler)(name="Nothing", classification=ItemClassification.filler),
 ]
 
-# Progressive lootable acts as an extra count for limited actions, (up to their usual max, for when you don't have them capped) in rough order of usefullness/progression
-# Long Quests (up to 2) > Short Quests > Long Quests (Rest) > Locks > Wild Mana ... > n-1 > Mana Pot
-progressive_lootable = Action(Filler)(name="Progressive Lootable")
+# ZX Class means that action should be included if the goal is >=n, the zone arg only used for the name/display
 
+# CanReachLocation would make a lot of these rules simpler, however as the locations would want to use most are optional
+# I decided against it and just copy & pasted the relevant rules instead.
+# I can't see how CanReachLocation would work, when the location exists in the id to name map
+# but not in any region and without any rules set on it.
+# I guess a potential answer is to use events? Register every unused location to regions as usual, but as events
 
-# ZX Class means that action should be included if the goal is >=n, the zone arg is for display/to hint what zone the item/location is in
-# e.g. you can stretch to Small Dungeon completion 3 in Z1 if you really want to, but you're only doing 4+ in Z3 (Z4 with pyromancy? idk i forget this game)
-# i.e. Action(Z1, Multipart)(zone="Z1", name="SDungeon", count=[1, 2, 3]...) & Action(Z3, Multipart)(zone="Z1", name="SDungeon", count=[4, 5, 6]...)
-#       Will put checks in Small Dungeon completion 4-6 only if the goal is Z3 or higher
-all_actions = [
-
+all_actions: List[_Action] = [
     # Zone 1
+    Action(Start, Progress, AddRule)(zone="Z1", name="Wander", add_rule_at=9, rule2=HasGlassesLogic),
+    Action(Start, Limited, AddRule) (zone="Z1", name="Mana Pot", internal_name="Pots", count=50, add_rule_at=25, rule2=HasGlassesLogic),
+    Action(Limited)                 (zone="Z1", name="Lock", internal_name="Locks", count=10),
+    Action()                        (zone="Z1", name="Buy Glasses", internal_name="BuyGlasses",
+                                     rule=HasFromList("Z1 - Lock", "Z1 - Short Quest", "Z1 - Long Quest", "Z1 - Filler - Progressive Lootable", count=1) | Has("Filler - 1 Starting Gold", 10)
+                                     ),
+    Action()                        (zone="Z1", name="Buy Mana", internal_name="BuyMana"),
+    Action(Progress)                (zone="Z1", name="Meet People", internal_name="Met", override_rule=(Has("Z1 - Meet People") & HasMana(800)) | (Has("Z1 - Throw Party") & HasFromList("Z1 - Long Quest", "Filler - Progressive Lootable", count=2) & HasMana(1600))),
+    Action()                        (zone="Z1", name="Train Strength", internal_name="TrainStrength", rule=HasMana(2000)),
+    Action(Limited)                 (zone="Z1", name="Short Quest", internal_name="SQuests", count=20, rule=(Has("Z1 - Meet People") & HasMana(800)) | (Has("Z1 - Throw Party") & HasFromList("Z1 - Long Quest", "Filler - Progressive Lootable", count=2) & HasMana(1600))),
+    Action(Progress)                (zone="Z1", name="Investigate", internal_name="Secrets", rule=HasMana(1000)),
+    Action(Limited)                 (zone="Z1", name="Long Quest", internal_name="LQuests", count=10, rule=Has("Z1 - Investigate")),
+    Action()                        (zone="Z1", name="Throw Party", internal_name="ThrowParty", rule=HasFromList("Z1 - Long Quest", "Filler - Progressive Lootable", count=2) & HasMana(1600)),
+    # I realise that JorneyRule works just about the same for Buy Supplies, minus the 1k mana for Start Journey but that can be left out
+    # Just removed the check for Z1 - Start Journey and let the default & in rules() handle it
+    Action()                        (zone="Z1", name="Buy Supplies", internal_name="BuySupplies", rule=JourneyRule()),
+    Action()                        (zone="Z1", name="Haggle", rule=HasFromList("Z1 - Long Quest", "Filler - Progressive Lootable", count=1)),
+    Action()                        (zone="Z1", name="Start Journey", internal_name="StartJourney", rule=JourneyRule() & HasGlassesLogic),
 
-    Action(Start, Progress)                         (zone="Z1", name="Wander"),
-    Action(Start, Limited)                          (zone="Z1", name="Mana Pot", count=range(1, 51)),
-    Action(Limited)                                 (zone="Z1", name="Lock", count=range(1, 11)),
-    Action()                                          (zone="Z1", name="Buy Glasses"),
-    Action()                                          (zone="Z1", name="Buy Mana"),
-    Action(Progress)                                (zone="Z1", name="Meet People", rule=HasMana(800)),
-    Action()                                          (zone="Z1", name="Train Strength"),
-    Action(Limited)                    (zone="Z1", name="Short Quest", count=range(1, 21), requirements=["Z1 - Meet People"], lootable_classification=ItemClassification.progression),
-    Action(Progress)                                (zone="Z1", name="Investigate", rule=HasMana(1000)),
-    Action(Limited)                   (zone="Z1", name="Long Quest", count=range(1, 11), requirements=["Z1 - Investigate"], lootable_classification=ItemClassification.progression),
-    Action()                                          (zone="Z1", name="Throw Party", rules=has_2_rep),
-    Action(Skill)                                   (zone="Z1", name="Warrior Lessons", skill="Combat", count=[1] + list(range(10, 101, 10)), rule=HasFromList("Z1 - Long Quest", "Filler - Progressive Lootable", count=2)),
-    Action(Skill)                                   (zone="Z1", name="Mage Lessons", skill="Magic", count=[1] + list(range(10, 101, 10)), rule=HasFromList("Z1 - Long Quest", "Filler - Progressive Lootable", count=2)),
-    Action(Multipart)                 (zone="Z1", name="Heal The Sick", count=[1, 2, 3, 4, 5], rule=Has("Z1 - Mage Lessons")),
-    Action(Multipart)                 (zone="Z1", name="Fight Monsters", count=[1, 2, 3], rule=Has("Z1 - Warrior Lessons")),
-    # Should be OR, i'm eternally finding things to refactor and make more complicated...
-    Action(Multipart)                 (zone="Z1", name="Small Dungeon", count=[1, 2, 3], rule=Has("Z1 - Mage Lessons") & Has("Z1 - Warrior Lessons")),
-    Action()                                          (zone="Z1", name="Buy Supplies"),
-    Action()                                          (zone="Z1", name="Haggle", rule=HasFromList("Z1 - Long Quest", "Filler - Progressive Lootable", count=1)),
-    Action()                                          (zone="Z1", name="Start Journey", rule=JourneyRule()),
+    Action(Shop)                    (zone="Z1", name="AP Shop", internal_name="APShop", min=50, max=300, option="z1_shop"),
+
+    Action(Multipart)               (zone="Z1", name="Heal The Sick", internal_name="Heal", option="heal", rule=Has("Z1 - Mage Lessons") & HasFromList("Z1 - Long Quest", "Filler - Progressive Lootable", count=1) & HasMana(2500)),
+    Action(AddRule, Multipart)      (zone="Z1", name="Fight Monsters", internal_name="Fight", option="fight", rule=Has("Z1 - Warrior Lessons") & HasFromList("Z1 - Long Quest", "Filler - Progressive Lootable", count=2) & HasMana(2000), add_rule_at=8, rule2=Has("Z4 - Pyromancy")),
+    Action(Multipart)               (zone="Z1", name="Small Dungeon", internal_name="SDungeon", option="sd", rule=Has("Z1 - Mage Lessons") | Has("Z1 - Warrior Lessons")),
+
+    Action(Skill)                   (zone="Z1", name="Combat", action_name="Warrior Lessons", internal_action_name="WarriorLessons", rule=HasFromList("Z1 - Long Quest", "Filler - Progressive Lootable", count=2) & HasMana(1000)),
+    Action(Skill)                   (zone="Z1", name="Magic", action_name="Mage Lessons", internal_action_name="MageLessons", rule=HasFromList("Z1 - Long Quest", "Filler - Progressive Lootable", count=2) & HasMana(1000)),
 
     # Zone 2
+    Action(Z2, Progress)            (zone="Z2", name="Explore Forest", internal_name="Forest"),
+    # TODO: Bespoke mixin just for Wild Mana/Herbs with proper logic (i.e. correct number in logic with just Explore or Thicket and everything with both)
+    Action(Z2, Batched)             (zone="Z2", name="Wild Mana", internal_name="WildMana", count=100, lootable_classification=ItemClassification.filler, rule=Has("Z2 - Explore Forest") & Has("Z2 - Clear Thicket")),
+    Action(Z2, Batched)             (zone="Z2", name="Herb", internal_name="Herbs", count=200, lootable_classification=ItemClassification.filler, rule=Has("Z2 - Explore Forest") & Has("Z2 - Old Shortcut") & Has("Z2 - Follow Flowers")),
+    Action(Z2, Limited)             (zone="Z2", name="Hunt", count=20, lootable_classification=ItemClassification.filler, rule=Has("Z2 - Explore Forest")),
+    Action(Z2)                      (zone="Z2", name="Sit By Waterfall", internal_name="SitByWaterfall"),
+    Action(Z2, Progress)            (zone="Z2", name="Old Shortcut", internal_name="Shortcut"),
+    Action(Z2, Progress)            (zone="Z2", name="Talk To Hermit", internal_name="Hermit"),
+    Action(Z2)                      (zone="Z2", name="Brew Potions", internal_name="BrewPotions"),
+    Action(Z2)                      (zone="Z2", name="Train Dexterity", internal_name="TrainDexterity"),
+    Action(Z2)                      (zone="Z2", name="Train Speed", internal_name="TrainSpeed"),
+    Action(Z2, Progress)            (zone="Z2", name="Follow Flowers", internal_name="Flowers"),
+    Action(Z2)                      (zone="Z2", name="Bird Watching", internal_name="BirdWatching", rule=Has("Z1 - Buy Glasses")),
+    Action(Z2, Progress)            (zone="Z2", name="Clear Thicket", internal_name="Thicket"),
+    Action(Z2, Progress)            (zone="Z2", name="Talk To Witch", internal_name="Witch"),
+    Action(Z2)                      (zone="Z2", name="Continue On", internal_name="ContinueOn"),
 
-    Action(Z2, OnlyLocations, Skill)                    (zone="Z1", name="Warrior Lessons", skill="Combat", count=range(101, 151, 10)),
-    Action(Z2, OnlyLocations, Skill)                    (zone="Z1", name="Mage Lessons", skill="Magic", count=range(101, 151, 10)),
-    Action(Z2, OnlyLocations, Multipart, Requirements)  (zone="Z1", name="Heal The Sick", count=[6, 7], requirements=["Z1 - Mage Lessons"]),
-    Action(Z2, OnlyLocations, Multipart, Requirements)  (zone="Z1", name="Fight Monsters", count=[4, 5], requirements=["Z1 - Warrior Lessons"]),
-    Action(Z2, OnlyLocations, Multipart, Requirements)  (zone="Z1", name="Small Dungeon", count=[4], requirements=["Z1 - Mage Lessons", "Z1 - Warrior Lessons"]),
-
-    Action(Z2, Progress)                                (zone="Z2", name="Explore Forest"),
-    Action(Z2, Limited, Requirements)                   (zone="Z2", name="Wild Mana", count=range(1, 101), requirements=["Z2 - Explore Forest", "Z2 - Clear Thicket"], lootable_classification=ItemClassification.filler),
-    Action(Z2, Limited, Requirements)                   (zone="Z2", name="Herb", count=range(1, 201), requirements=["Z2 - Explore Forest", "Z2 - Old Shortcut", "Z2 - Follow Flowers"], lootable_classification=ItemClassification.filler),
-    Action(Z2, Limited, Requirements)                   (zone="Z2", name="Hunt", count=range(1, 21), requirements=["Z2 - Explore Forest"], lootable_classification=ItemClassification.filler),
-    Action(Z2)                                          (zone="Z2", name="Sit By Waterfall"),
-    Action(Z2, Progress)                                (zone="Z2", name="Old Shortcut"),
-    Action(Z2, Progress)                                (zone="Z2", name="Talk To Hermit"),
-    Action(Z2, Skill)                                   (zone="Z2", name="Practical Magic", skill="Practical Magic", count=[1] + list(range(10, 101, 10))),
+    Action(Z2, Skill)               (zone="Z2", name="Practical Magic", internal_name="Practical", action_name="Practical Magic", internal_action_name="PracticalMagic"),
     # *techincally* there's a rule here for 10 herbs but pffft that's not going to be an issue
-    Action(Z2, Skill)                                   (zone="Z2", name="Learn Alchemy", skill="Alchemy", count=[1, 10, 20]),
-    Action(Z2)                                          (zone="Z2", name="Brew Potions"),
-    Action(Z2)                                          (zone="Z2", name="Train Dexterity"),
-    Action(Z2)                                          (zone="Z2", name="Train Speed"),
-    Action(Z2, Progress)                                (zone="Z2", name="Follow Flowers"),
-    Action(Z2, Requirements)                            (zone="Z2", name="Bird Watching", requirements=["Z1 - Buy Glasses"]),
-    Action(Z2, Progress)                                (zone="Z2", name="Clear Thicket"),
-    Action(Z2, Progress)                                (zone="Z2", name="Talk To Witch"),
-    # Haggle isn't a requirement - I did it without haggle to finish a Z4 multiworld - maybe a hard logic option
-    Action(Z2, Skill, Requirements)                     (zone="Z2", name="Dark Magic", skill="Dark Magic", count=[1] + list(range(10, 101, 10)), requirements=["Z1 - Haggle"]),
-    # This feels like a Z3 location, but you can stretch for at least the first one in Z2 with ~100 Dark Magic, it's just not a good idea with the soul stone cost
-    Action(Z2, Buff)                                    (zone="Z2", name="Dark Ritual", buff="Ritual", count=[1], rule=Has("Z2 - Dark Magic") & (CanReachLocation("Z1 - Small Dungeon - Completion #1") | CanReachLocation("Z3 - Large Dungeon - Completion #1") | (CanReachLocation("Z3 - Start Trek") & Has("Z4 - Soulstone")))),
-    Action(Z2)                                          (zone="Z2", name="Continue On"),
+    Action(Z2, Skill)               (zone="Z2", name="Alchemy", action_name="Learn Alchemy", internal_action_name="LearnAlchemy", option="alchemy", every=5),
+    Action(Z2, Skill)               (zone="Z2", name="Dark Magic", internal_name="Dark", action_name="Dark Magic", internal_action_name="DarkMagic", rule=Has("Z1 - Haggle")),
+    # So many rules
+    Action(Z2, Buff)                (zone="Z2", name="Ritual", action_name="Dark Ritual", internal_action_name="DarkRitual", option="ritual", every=1, rule=Has("Z2 - Dark Magic") & Has("Z1 - Haggle") & HasSoulstones),
 
     # Zone 3
+    Action(Z3, Progress)            (zone="Z3", name="Explore City", internal_name="City"),
+    Action(Z3, Limited)             (zone="Z3", name="Gamble", count=20, rule=Has("Z3 - Explore City")),
+    Action(Z3, Progress)            (zone="Z3", name="Get Drunk", internal_name="Drunk"),
+    Action(Z3)                      (zone="Z3", name="Buy Mana", internal_name="BuyMana"),
+    Action(Z3)                      (zone="Z3", name="Sell Potions", internal_name="SellPotions", rule=Has("Z2 - Brew Potions")),
+    Action(Z3)                      (zone="Z3", name="Gather Team", internal_name="GatherTeam", rule=Has("Z3 - Adventure Guild")),
+    Action(Z3, Progress)            (zone="Z3", name="Apprentice", rule=Has("Z3 - Crafting Guild")),
+    Action(Z3, Progress)            (zone="Z3", name="Mason", rule=Has("Z3 - Crafting Guild")),
+    Action(Z3, Progress)            (zone="Z3", name="Architect", rule=Has("Z3 - Crafting Guild")),
+    Action(Z3)                      (zone="Z3", name="Read Books", internal_name="ReadBooks", rule=Has("Z1 - Buy Glasses")),
+    Action(Z3)                      (zone="Z3", name="Buy Pickaxe", internal_name="BuyPickaxe"),
+    Action(Z3)                      (zone="Z3", name="Start Trek", internal_name="StartTrek"),
 
-    Action(Z3, OnlyLocations, Multipart, Requirements)  (zone="Z1", name="Heal The Sick", count=[8, 9], requirements=["Z1 - Mage Lessons"]),
-    Action(Z3, OnlyLocations, Skill)                    (zone="Z1", name="Warrior Lessons", skill="Combat", count=[160, 170, 180, 190, 200]),
-    Action(Z3, OnlyLocations, Skill)                    (zone="Z1", name="Mage Lessons", skill="Magic", count=[160, 170, 180, 190, 200]),
-    Action(Z3, OnlyLocations, Multipart, Requirements)  (zone="Z1", name="Fight Monsters", count=[6, 7], requirements=["Z1 - Warrior Lessons"]),
-    Action(Z3, OnlyLocations, Multipart, Requirements)  (zone="Z1", name="Small Dungeon", count=[5, 6], requirements=["Z1 - Mage Lessons", "Z1 - Warrior Lessons"]),
-    Action(Z3, OnlyLocations, Skill)                    (zone="Z2", name="Practical Magic", skill="Practical Magic", count=[110, 120, 130, 140, 150, 160, 170, 180, 190, 200]),
-    Action(Z3, Skill)                                   (zone="Z2", name="Learn Alchemy", skill="Alchemy", count=[30, 40, 50]),
-    Action(Z3, OnlyLocations, Skill)                    (zone="Z2", name="Dark Magic", skill="Dark Magic", count=[110, 120, 130, 140, 150, 160, 170, 180, 190, 200]),
 
-    Action(Z3, Progress)                                (zone="Z3", name="Explore City"),
-    Action(Z3, Limited, Requirements)                   (zone="Z3", name="Gamble", count=range(1, 21), requirements=["Z3 - Explore City"]),
-    Action(Z3, Progress)                                (zone="Z3", name="Get Drunk"),
-    Action(Z3)                                          (zone="Z3", name="Buy Mana"),
-    Action(Z3, Requirements)                            (zone="Z3", name="Sell Potions", requirements=["Z2 - Brew Potions"]),
+    Action(Z3, Shop)                (zone="Z3", name="AP Shop", internal_name="APShop", min=500, max=1000, option="z3_shop", rule=Has("Z2 - Brew Potions") | Has("Z2 - Practical Magic")),
+
     # I'm going to say the guilds are Z5+, but you still need the item for Gather Team/LDungeon/Architect bars
-    Action(Z3, Multipart)                               (zone="Z3", name="Adventure Guild", count=[]),
-    Action(Z3, Requirements)                            (zone="Z3", name="Gather Team", requirements=["Z3 - Adventure Guild"]),
-    Action(Z3, Multipart, Requirements)                 (zone="Z3", name="Large Dungeon", count=[1, 2], requirements=["Z3 - Adventure Guild", "Z3 - Gather Team", "Z1 - Warrior Lessons", "Z1 - Mage Lessons"]),
-    Action(Z3, Multipart)                               (zone="Z3", name="Crafting Guild", count=[]),
-    Action(Z3, Progress, Requirements)                  (zone="Z3", name="Apprentice", requirements=["Z3 - Crafting Guild"]),
-    Action(Z3, Progress, Requirements)                  (zone="Z3", name="Mason", requirements=["Z3 - Crafting Guild"]),
-    Action(Z3, Progress, Requirements)                  (zone="Z3", name="Architect", requirements=["Z3 - Crafting Guild"]),
-    Action(Z3, Requirements)                            (zone="Z3", name="Read Books", requirements=["Z1 - Buy Glasses"]),
-    Action(Z3)                                          (zone="Z3", name="Buy Pickaxe"),
-    Action(Z3)                                          (zone="Z3", name="Start Trek"),
+    Action(Z3, Multipart)           (zone="Z3", name="Adventure Guild", internal_name="AdvGuild"),
+    Action(Z3, AddRule, Multipart)  (zone="Z3", name="Large Dungeon", internal_name="LDungeon", option="ld", rule=Has("Z3 - Adventure Guild") & Has("Z3 - Gather Team") & Has("Z1 - Warrior Lessons") & Has("Z1 - Mage Lessons"), add_rule_at=3, rule2=Has("Z4 - Pyromancy")),
+    Action(Z3, Multipart)           (zone="Z3", name="Crafting Guild", internal_name="CraftGuild"),
 
     # Zone 4
+    Action(Z4, Progress)            (zone="Z4", name="Climb Mountain", internal_name="Mountain"),
+    Action(Z4, Limited)             (zone="Z4", name="Mana Geyser", internal_name="Geysers", count=10, rule=Has("Z4 - Climb Mountain") & Has("Z3 - Buy Pickaxe")),
+    Action(Z4, Progress)            (zone="Z4", name="Decipher Runes", internal_name="Runes"),
+    Action(Z4, Progress)            (zone="Z4", name="Explore Cavern", internal_name="Cavern"),
+    Action(Z4, Limited)             (zone="Z4", name="Soulstone", internal_name="MineSoulstones", count=30, rule=Has("Z4 - Explore Cavern") & Has("Z3 - Buy Pickaxe")),
+    Action(Z4, Progress)            (zone="Z4", name="Check Walls", internal_name="Illusions"),
+    Action(Z4, Limited)             (zone="Z4", name="Artifact", internal_name="Artifacts", count=20, rule=Has("Z4 - Check Walls")),
+    # Can get to +-50 rep. -50 path has haggle and PM to have enough mana to do 50 Dark Magic actions
+    Action(Z4)                      (zone="Z4", name="Face Judgement", internal_name="FaceJudgement", rule=((Has("Z1 - Heal The Sick") & Has("Z1 - Mage Lessons")) | (Has("Z2 - Talk To Witch") & Has("Z2 - Dark Magic") & Has("Z1 - Haggle") & Has("Z2 - Practical Magic")))),
 
-    Action(Z4, OnlyLocations, Skill)                    (zone="Z1", name="Warrior Lessons", skill="Combat", count=[210, 220, 230, 240, 250, 260, 270, 280, 290, 300]),
-    Action(Z4, OnlyLocations, Skill)                    (zone="Z1", name="Mage Lessons", skill="Magic", count=[210, 220, 230, 240, 250, 260, 270, 280, 290, 300]),
-    Action(Z4, OnlyLocations, Multipart, Requirements)  (zone="Z1", name="Heal The Sick", count=[10], requirements=["Z1 - Mage Lessons"]),
-    Action(Z4, OnlyLocations, Multipart, Requirements)  (zone="Z1", name="Fight Monsters", count=[8, 9, 10], requirements=["Z1 - Warrior Lessons", "Z4 - Pyromancy"]),
-    Action(Z4, OnlyLocations, Skill)                    (zone="Z2", name="Practical Magic", skill="Practical Magic", count=[210, 220, 230, 240, 250, 260, 270, 280, 290, 300]),
-    Action(Z3, OnlyLocations, Skill)                    (zone="Z2", name="Learn Alchemy", skill="Alchemy", count=[60, 70, 80, 90, 100]),
-    Action(Z4, OnlyLocations, Skill)                    (zone="Z2", name="Dark Magic", skill="Dark Magic", count=[210, 220, 230, 240, 250, 260, 270, 280, 290, 300]),
-    Action(Z4, OnlyLocations, Multipart, Requirements)  (zone="Z3", name="Large Dungeon", count=[3, 4, 5, 6, 7, 8, 9], requirements=["Z4 - Pyromancy"]),
+    Action(Z4, Multipart)           (zone="Z4", name="Hunt Trolls", internal_name="HuntTrolls", option="trolls", rule=Has("Z1 - Warrior Lessons") & Has("Z4 - Pyromancy")),
 
-    Action(Z4, Progress)                                (zone="Z4", name="Climb Mountain"),
-    Action(Z4, Limited, Requirements)                   (zone="Z4", name="Mana Geyser", count=range(1, 11), requirements=["Z4 - Climb Mountain", "Z3 - Buy Pickaxe"]),
-    Action(Z4, Progress)                                (zone="Z4", name="Decipher Runes"),
-    Action(Z4, Skill)                                   (zone="Z4", name="Chronomancy", skill="Chronomancy", count=[1, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]),
-    Action(Z4, Skill)                                   (zone="Z4", name="Pyromancy", skill="Pyromancy", count=[1, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]),
-    Action(Z4, Progress)                                (zone="Z4", name="Explore Cavern"),
-    Action(Z4, Limited, Requirements)                   (zone="Z4", name="Soulstone", count=range(1, 31), requirements=["Z4 - Explore Cavern", "Z3 - Buy Pickaxe"]),
-    Action(Z4, Multipart, Requirements)                 (zone="Z4", name="Hunt Trolls", count=[1, 2, 3, 4, 5], requirements=["Z4 - Pyromancy"]),
-    Action(Z4, Progress)                                (zone="Z4", name="Check Walls"),
-    Action(Z4, Limited, Requirements)                   (zone="Z4", name="Artifact", count=range(1, 21), requirements=["Z4 - Check Walls"]),
-    Action(Z4, Buff)                                    (zone="Z4", name="Imbue Mind", buff="Imbue Mind", count=[1]),
-    Action(Z4)                                          (zone="Z4", name="Face Judgement", rules=judgementRules)
+    Action(Z4, Skill)               (zone="Z4", name="Chronomancy", action_name="Chronomancy"),
+    Action(Z4, Skill)               (zone="Z4", name="Pyromancy", action_name="Pyromancy"),
+    Action(Z4, Buff)                (zone="Z4", name="Imbue Mind", action_name="Imbue Mind", internal_name="Imbuement", option="mind", every=1)
 ]
 
-all_actions = all_actions + filler_actions + [progressive_lootable]
-all_locations
+all_actions = all_actions + filler_actions
 for action in all_actions:
-    all_items
-    locations, location_id = action.locations(location_id, location_name_to_id)
+    locations, location_id = action.all_locations(location_id, location_name_to_id)
     all_locations += locations
-    items, item_id = action.items(item_id, item_to_id)
+    items, item_id = action.all_items(item_id, item_to_id)
     all_items += items
 
 filler_item_names = [action.unlock_item_name() for action in filler_actions] + ["Z1 - Mana Pot"]
 
-if __name__ == "__main__":
-    name_map = {
-        "Wander": "Wander",
-        "Mana Pot": "Pots",
-        "Lock": "Locks",
-        "Buy Glasses": "BuyGlasses",
-        "Buy Mana": "BuyMana",
-        "Meet People": "Met",
-        "Train Strength": "TrainStrength",
-        "Short Quest": "SQuests",
-        "Investigate": "Secrets",
-        "Long Quest": "LQuests",
-        "Throw Party": "ThrowParty",
-        "Warrior Lessons": "WarriorLessons",
-        "Mage Lessons": "MageLessons",
-        "Heal The Sick": "Heal",
-        "Fight Monsters": "Fight",
-        "Small Dungeon": "SDungeon",
-        "Buy Supplies": "BuySupplies",
-        "Haggle": "Haggle",
-        "Start Journey": "StartJourney",
+# Okay i'm getting tired of writing this file so it can be rune by itself to output the below.
+# There's a way to add an option to the archipelago launcher that can dump these, right?
+name_map = {}
+skill_map = {}
+for action in all_actions:
+    action.name_map(name_map, skill_map)
+old_name_map = {
+    "Wander": "Wander",
+    "Mana Pot": "Pots",
+    "Lock": "Locks",
+    "Buy Glasses": "BuyGlasses",
+    "Buy Mana": "BuyMana",
+    "Meet People": "Met",
+    "Train Strength": "TrainStrength",
+    "Short Quest": "SQuests",
+    "Investigate": "Secrets",
+    "Long Quest": "LQuests",
+    "Throw Party": "ThrowParty",
+    "Warrior Lessons": "WarriorLessons",
+    "Mage Lessons": "MageLessons",
+    "Heal The Sick": "Heal",
+    "Fight Monsters": "Fight",
+    "Small Dungeon": "SDungeon",
+    "Buy Supplies": "BuySupplies",
+    "Haggle": "Haggle",
+    "Start Journey": "StartJourney",
 
-        "Explore Forest": "Forest",
-        "Wild Mana": "WildMana",
-        "Herb": "Herbs",
-        "Hunt": "Hunt",
-        "Sit By Waterfall": "SitByWaterfall",
-        "Old Shortcut": "Shortcut",
-        "Talk To Hermit": "Hermit",
-        "Practical Magic": "PracticalMagic",
-        "Learn Alchemy": "LearnAlchemy",
-        "Brew Potions": "BrewPotions",
-        "Train Dexterity": "TrainDexterity",
-        "Train Speed": "TrainSpeed",
-        "Follow Flowers": "Flowers",
-        "Bird Watching": "BirdWatching",
-        "Clear Thicket": "Thicket",
-        "Talk To Witch": "Witch",
-        "Dark Magic": "DarkMagic",
-        "Dark Ritual": "DarkRitual",
-        "Continue On": "ContinueOn",
+    "Explore Forest": "Forest",
+    "Wild Mana": "WildMana",
+    "Herb": "Herbs",
+    "Hunt": "Hunt",
+    "Sit By Waterfall": "SitByWaterfall",
+    "Old Shortcut": "Shortcut",
+    "Talk To Hermit": "Hermit",
+    "Practical Magic": "PracticalMagic",
+    "Learn Alchemy": "LearnAlchemy",
+    "Brew Potions": "BrewPotions",
+    "Train Dexterity": "TrainDexterity",
+    "Train Speed": "TrainSpeed",
+    "Follow Flowers": "Flowers",
+    "Bird Watching": "BirdWatching",
+    "Clear Thicket": "Thicket",
+    "Talk To Witch": "Witch",
+    "Dark Magic": "DarkMagic",
+    "Dark Ritual": "DarkRitual",
+    "Continue On": "ContinueOn",
 
-        "Explore City": "City",
-        "Gamble": "Gamble",
-        "Get Drunk": "Drunk",
-        "Sell Potions": "SellPotions",
-        "Adventure Guild": "AdvGuild",
-        "Gather Team": "GatherTeam",
-        "Large Dungeon": "LDungeon",
-        "Crafting Guild": "CraftGuild",
-        "Apprentice": "Apprentice",
-        "Mason": "Mason",
-        "Architect": "Architect",
-        "Read Books": "ReadBooks",
-        "Buy Pickaxe": "BuyPickaxe",
-        "Start Trek": "StartTrek",
+    "Explore City": "City",
+    "Gamble": "Gamble",
+    "Get Drunk": "Drunk",
+    "Sell Potions": "SellPotions",
+    "Adventure Guild": "AdvGuild",
+    "Gather Team": "GatherTeam",
+    "Large Dungeon": "LDungeon",
+    "Crafting Guild": "CraftGuild",
+    "Apprentice": "Apprentice",
+    "Mason": "Mason",
+    "Architect": "Architect",
+    "Read Books": "ReadBooks",
+    "Buy Pickaxe": "BuyPickaxe",
+    "Start Trek": "StartTrek",
 
-        "Climb Mountain": "Mountain",
-        "Mana Geyser": "Geysers",
-        "Decipher Runes": "Runes",
-        "Chronomancy": "Chronomancy",
-        "Pyromancy": "Pyromancy",
-        "Explore Cavern": "Cavern",
-        "Soulstone": "MineSoulstones",
-        "Hunt Trolls": "HuntTrolls",
-        "Check Walls": "Illusions",
-        "Artifact": "Artifacts",
-        "Face Judgement": "FaceJudgement",
+    "Climb Mountain": "Mountain",
+    "Mana Geyser": "Geysers",
+    "Decipher Runes": "Runes",
+    "Chronomancy": "Chronomancy",
+    "Pyromancy": "Pyromancy",
+    "Explore Cavern": "Cavern",
+    "Soulstone": "MineSoulstones",
+    "Hunt Trolls": "HuntTrolls",
+    "Check Walls": "Illusions",
+    "Artifact": "Artifacts",
+    "Face Judgement": "FaceJudgement",
 
-        "Combat": "Combat",
-        "Magic": "Magic",
-        "Practical Magic": "Practical",
-        "Alchemy": "Alchemy",
-        "Dark Magic": "Dark",
-        "Dark Ritual": "DarkRitual",
-        "Ritual": "Ritual",
-        "Imbue Mind": "Imbuement"
-    }
+    "Combat": "Combat",
+    "Magic": "Magic",
+    "Practical Magic": "Practical",
+    "Alchemy": "Alchemy",
+    "Dark Magic": "Dark",
+    "Dark Ritual": "DarkRitual",
+    "Ritual": "Ritual",
+    "Imbue Mind": "Imbuement"
+}
 
-    for location in location_name_to_id:
-        split = location.split(" - ")
-        display_name = split[1] if split[0].startswith("Z") else split[0]
+for location in location_name_to_id:
+    split = location.split(" - ")
+    display_name = split[1] if split[0].startswith("Z") else split[0]
 
-        if display_name not in name_map:
-            raise Exception(f"Missing {location}: {display_name} in name_map")
-    print("All location names are in name_map")
-    with open("display_name_to_internal.json", "w") as f:
-        # Flip it for use in the mod
-        f.write(json.dumps(name_map))
+    if display_name not in name_map:
+        raise Exception(f"Missing {location}: {display_name} in name_map")
+print("All location names are in name_map")
+with open("display_name_to_internal.json", "w") as f:
+    # Flip it for use in the mod
+    f.write(json.dumps(name_map))
 
-    with open("location_name_to_id.json", "w") as f:
-        # Awful line
-        f.write(json.dumps({k.replace(k.split(" - ")[1] if k.split(" - ")[0].startswith("Z") else k.split(" - ")[0], name_map[k.split(" - ")[1] if k.split(" - ")[0].startswith("Z") else k.split(" - ")[0]]): v for k, v in location_name_to_id.items()}))
-    print("Dumped location_name_to_id")
+with open("location_name_to_id.json", "w") as f:
+    # Awful line
+    f.write(json.dumps({k.replace(k.split(" - ")[1] if k.split(" - ")[0].startswith("Z") else k.split(" - ")[0], name_map[k.split(" - ")[1] if k.split(" - ")[0].startswith("Z") else k.split(" - ")[0]]): v for k, v in location_name_to_id.items()}))
+print("Dumped location_name_to_id")
