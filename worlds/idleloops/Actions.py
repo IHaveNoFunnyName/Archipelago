@@ -4,10 +4,10 @@ import json
 from typing import Dict, List, Tuple
 
 from BaseClasses import ItemClassification, Location, Item
-from rule_builder.rules import Has, HasAll, HasFromList, True_, Rule
+from rule_builder.rules import Has, HasFromList, True_, Rule
 
 from .Options import IdleLoopsOptions
-from .Rules import HasGlassesLogic, HasMana, HasSoulstones, JourneyRule
+from .Rules import HasIfOptionManaReduction, IfOption, rules, HasIfOptionVanillaEasy, HasIfOptionVanillaHard, HasMana, JourneyRule
 
 # This does nothing, just allows me to in code disambiguate when i'm using
 # the class: for grabbing static max/min/etc values
@@ -48,14 +48,14 @@ class Action:
 
 
 class _Action:
-    def __init__(self, zone: str, name: str, internal_name: str = None, classification: ItemClassification = ItemClassification.progression, rule: Rule = None, override_rule: Rule = None, base_count: int = 1):
+    def __init__(self, zone: str, name: str, internal_name: str = None, classification: ItemClassification = ItemClassification.progression, rule: Rule = None, full_rule: Rule = None, base_count: int = 1):
         self.zone = zone
         self.region = "Z1"
         self.name = name
         self.internal_name = name if internal_name is None else internal_name
         self.classification = classification
         self.rule = rule
-        self.override_rule = override_rule
+        self.full_rule = full_rule
         self.base_count = base_count
 
     def base_location_list(self) -> List[str]:
@@ -83,8 +83,8 @@ class _Action:
 
     def rules(self, options: IdleLoopsOptions) -> Dict[str, callable]:
         rule = self.base_rule()
-        if self.override_rule is not None:
-            rule = self.override_rule
+        if self.full_rule is not None:
+            rule = self.full_rule
         else:
             if self.rule is not None:
                 rule = rule & self.rule
@@ -152,19 +152,6 @@ class Progress():
             return [(name, self.region) for name in self.locations_progress_list()]
         else:
             return [(name, self.region) for name in self.base_location_list()]
-
-    # A bit hacky and unintuitivey, I made override_rule for the edge case of Throw Party giving Meet People progress (overriding base_rule).
-    # (And potentially other similar cases in the future?)
-    # Which then itself creates another edge case where Throw Party *doesn't* finish the Meet People action.
-    # (which is a location when the progress option is off)
-    # So ignore the override if progress locations are off.
-    def rules(self, options: IdleLoopsOptions) -> Dict[str, callable]:
-        if options.location_progress:
-            return super().rules(options)
-        rule = self.base_rule()
-        if self.rule is not None:
-            rule = rule & self.rule
-        return {name: rule for name in self.location_list()}
 
 
 class LimitedLocations():
@@ -473,97 +460,100 @@ filler_actions = [
 
 all_actions: List[_Action] = [
     # Zone 1
-    Action(Start, Progress, AddRule)(zone="Z1", name="Wander", add_rule_at=9, rule2=HasGlassesLogic),
-    Action(Start, Limited, AddRule) (zone="Z1", name="Mana Pot", internal_name="Pots", count=50, add_rule_at=25, rule2=HasGlassesLogic),
+    Action(Start, Progress, AddRule)(zone="Z1", name="Wander", add_rule_at=9, rule2=rules["Option Has Glasses"]),
+    Action(Start, Limited, AddRule) (zone="Z1", name="Mana Pot", internal_name="Pots", count=50, add_rule_at=25, rule2=rules["Option Has Glasses"]),
     Action(Limited)                 (zone="Z1", name="Lock", internal_name="Locks", count=10),
     Action()                        (zone="Z1", name="Buy Glasses", internal_name="BuyGlasses",
                                      rule=HasFromList("Z1 - Lock", "Z1 - Short Quest", "Z1 - Long Quest", "Z1 - Filler - Progressive Lootable", count=1) | Has("Filler - 1 Starting Gold", 10)
                                      ),
     Action()                        (zone="Z1", name="Buy Mana", internal_name="BuyMana"),
-    Action(Progress)                (zone="Z1", name="Meet People", internal_name="Met", override_rule=(Has("Z1 - Meet People") & HasMana(800)) | (Has("Z1 - Throw Party") & HasFromList("Z1 - Long Quest", "Filler - Progressive Lootable", count=2) & HasMana(1600))),
-    Action()                        (zone="Z1", name="Train Strength", internal_name="TrainStrength", rule=HasMana(2000)),
-    Action(Limited)                 (zone="Z1", name="Short Quest", internal_name="SQuests", count=20, rule=(Has("Z1 - Meet People") & HasMana(800)) | (Has("Z1 - Throw Party") & HasFromList("Z1 - Long Quest", "Filler - Progressive Lootable", count=2) & HasMana(1600))),
-    Action(Progress)                (zone="Z1", name="Investigate", internal_name="Secrets", rule=HasMana(1000)),
-    Action(Limited)                 (zone="Z1", name="Long Quest", internal_name="LQuests", count=10, rule=Has("Z1 - Investigate")),
-    Action()                        (zone="Z1", name="Throw Party", internal_name="ThrowParty", rule=HasFromList("Z1 - Long Quest", "Filler - Progressive Lootable", count=2) & HasMana(1600)),
+    Action(Progress)                (zone="Z1", name="Meet People", internal_name="Met", full_rule=IfOption({IdleLoopsOptions.location_progress}, rules["Z1 - Meet People"], rules["Meet People Progress"])),
+    Action()                        (zone="Z1", name="Train Strength", internal_name="TrainStrength", rule=HasMana(2000) & HasIfOptionVanillaHard(rules["Meet People Progress"])),
+    Action(Limited)                 (zone="Z1", name="Short Quest", internal_name="SQuests", count=20, rule=(rules["Meet People Progress"])),
+    Action(Progress)                (zone="Z1", name="Investigate", internal_name="Secrets", full_rule=rules["Z1 - Investigate"]),
+    Action(Limited)                 (zone="Z1", name="Long Quest", internal_name="LQuests", count=10, rule=rules["Z1 - Investigate"]),
+    Action()                        (zone="Z1", name="Throw Party", internal_name="ThrowParty", full_rule=rules["Z1 - Throw Party"]),
     # I realise that JorneyRule works just about the same for Buy Supplies, minus the 1k mana for Start Journey but that can be left out
     # Just removed the check for Z1 - Start Journey and let the default & in rules() handle it
-    Action()                        (zone="Z1", name="Buy Supplies", internal_name="BuySupplies", rule=JourneyRule()),
-    Action()                        (zone="Z1", name="Haggle", rule=HasFromList("Z1 - Long Quest", "Filler - Progressive Lootable", count=1)),
-    Action()                        (zone="Z1", name="Start Journey", internal_name="StartJourney", rule=JourneyRule() & HasGlassesLogic),
 
-    Action(Shop)                    (zone="Z1", name="AP Shop", internal_name="APShop", min=50, max=300, option="z1_shop"),
+    # HasIfOptionVanillaEasy here takes care of HasIfOptionVanillaHard(rules["Z1 - Investigate"])
+    Action()                        (zone="Z1", name="Buy Supplies", internal_name="BuySupplies", rule=JourneyRule() & HasIfOptionVanillaEasy(rules["Z1 Has Magic"] | rules["Z1 Has Combat"])),
+    Action()                        (zone="Z1", name="Haggle", rule=HasFromList("Z1 - Long Quest", "Filler - Progressive Lootable", count=1) & HasIfOptionVanillaEasy(rules["Z1 Has Magic"] | rules["Z1 Has Combat"])),
+    Action()                        (zone="Z1", name="Start Journey", internal_name="StartJourney", rule=JourneyRule() & rules["Option Has Glasses"] & HasIfOptionVanillaEasy(rules["Z1 Has Magic"] | rules["Z1 Has Combat"])),
 
-    Action(Multipart)               (zone="Z1", name="Heal The Sick", internal_name="Heal", option="heal", rule=Has("Z1 - Mage Lessons") & HasFromList("Z1 - Long Quest", "Filler - Progressive Lootable", count=1) & HasMana(2500)),
-    Action(AddRule, Multipart)      (zone="Z1", name="Fight Monsters", internal_name="Fight", option="fight", rule=Has("Z1 - Warrior Lessons") & HasFromList("Z1 - Long Quest", "Filler - Progressive Lootable", count=2) & HasMana(2000), add_rule_at=8, rule2=Has("Z4 - Pyromancy")),
-    Action(Multipart)               (zone="Z1", name="Small Dungeon", internal_name="SDungeon", option="sd", rule=Has("Z1 - Mage Lessons") | Has("Z1 - Warrior Lessons")),
+    Action(Shop)                    (zone="Z1", name="AP Shop", internal_name="APShop", min=50, max=300, option="z1_shop", rule=HasIfOptionVanillaEasy(rules["Z1 Has Magic"] | rules["Z1 Has Combat"])),
 
-    Action(Skill)                   (zone="Z1", name="Combat", action_name="Warrior Lessons", internal_action_name="WarriorLessons", rule=HasFromList("Z1 - Long Quest", "Filler - Progressive Lootable", count=2) & HasMana(1000)),
-    Action(Skill)                   (zone="Z1", name="Magic", action_name="Mage Lessons", internal_action_name="MageLessons", rule=HasFromList("Z1 - Long Quest", "Filler - Progressive Lootable", count=2) & HasMana(1000)),
+    Action(Multipart)               (zone="Z1", name="Heal The Sick", internal_name="Heal", option="heal", rule=rules["Z1 Has Magic"] & HasMana(2500)),
+    Action(AddRule, Multipart)      (zone="Z1", name="Fight Monsters", internal_name="Fight", option="fight", rule=rules["Z1 Has Combat"] & HasMana(2000), add_rule_at=8, rule2=rules["Has Pyromancy"]),
+    Action(Multipart)               (zone="Z1", name="Small Dungeon", internal_name="SDungeon", option="sd", rule=rules["Z1 Has Magic"] | rules["Z1 Has Combat"]),
+
+    Action(Skill)                   (zone="Z1", name="Combat", action_name="Warrior Lessons", internal_action_name="WarriorLessons", full_rule=rules["Z1 Has Combat"]),
+    Action(Skill)                   (zone="Z1", name="Magic", action_name="Mage Lessons", internal_action_name="MageLessons", full_rule=rules["Z1 Has Magic"]),
 
     # Zone 2
     Action(Z2, Progress)            (zone="Z2", name="Explore Forest", internal_name="Forest"),
     # TODO: Bespoke mixin just for Wild Mana/Herbs with proper logic (i.e. correct number in logic with just Explore or Thicket and everything with both)
+    # Change AddRule to take List[int, Rule]?
     Action(Z2, Batched)             (zone="Z2", name="Wild Mana", internal_name="WildMana", count=100, lootable_classification=ItemClassification.filler, rule=Has("Z2 - Explore Forest") & Has("Z2 - Clear Thicket")),
     Action(Z2, Batched)             (zone="Z2", name="Herb", internal_name="Herbs", count=200, lootable_classification=ItemClassification.filler, rule=Has("Z2 - Explore Forest") & Has("Z2 - Old Shortcut") & Has("Z2 - Follow Flowers")),
     Action(Z2, Limited)             (zone="Z2", name="Hunt", count=20, lootable_classification=ItemClassification.filler, rule=Has("Z2 - Explore Forest")),
-    Action(Z2)                      (zone="Z2", name="Sit By Waterfall", internal_name="SitByWaterfall"),
-    Action(Z2, Progress)            (zone="Z2", name="Old Shortcut", internal_name="Shortcut"),
-    Action(Z2, Progress)            (zone="Z2", name="Talk To Hermit", internal_name="Hermit"),
-    Action(Z2)                      (zone="Z2", name="Brew Potions", internal_name="BrewPotions"),
-    Action(Z2)                      (zone="Z2", name="Train Dexterity", internal_name="TrainDexterity"),
-    Action(Z2)                      (zone="Z2", name="Train Speed", internal_name="TrainSpeed"),
-    Action(Z2, Progress)            (zone="Z2", name="Follow Flowers", internal_name="Flowers"),
-    Action(Z2)                      (zone="Z2", name="Bird Watching", internal_name="BirdWatching", rule=Has("Z1 - Buy Glasses")),
-    Action(Z2, Progress)            (zone="Z2", name="Clear Thicket", internal_name="Thicket"),
-    Action(Z2, Progress)            (zone="Z2", name="Talk To Witch", internal_name="Witch"),
-    Action(Z2)                      (zone="Z2", name="Continue On", internal_name="ContinueOn"),
+    Action(Z2)                      (zone="Z2", name="Sit By Waterfall", internal_name="SitByWaterfall", rule=HasIfOptionVanillaHard("Z2 - Explore Forest")),
+    Action(Z2, Progress)            (zone="Z2", name="Old Shortcut", internal_name="Shortcut", full_rule=rules["Z2 - Old Shortcut"]),
+    Action(Z2, Progress)            (zone="Z2", name="Talk To Hermit", internal_name="Hermit", full_rule=rules["Z2 - Talk To Hermit"]),
+    Action(Z2)                      (zone="Z2", name="Brew Potions", internal_name="BrewPotions", rule=HasIfOptionVanillaEasy(rules["Has Alchemy"])),
+    Action(Z2)                      (zone="Z2", name="Train Dexterity", internal_name="TrainDexterity", rule=HasIfOptionVanillaHard("Z2 - Explore Forest")),
+    Action(Z2)                      (zone="Z2", name="Train Speed", internal_name="TrainSpeed", rule=HasIfOptionVanillaHard("Z2 - Explore Forest")),
+    Action(Z2, Progress)            (zone="Z2", name="Follow Flowers", internal_name="Flowers", full_rule=rules["Z2 - Follow Flowers"]),
+    Action(Z2)                      (zone="Z2", name="Bird Watching", internal_name="BirdWatching", rule=Has("Z1 - Buy Glasses") & HasIfOptionVanillaHard("Z2 - Follow Flowers")),
+    Action(Z2, Progress)            (zone="Z2", name="Clear Thicket", internal_name="Thicket", full_rule=rules["Z2 - Clear Thicket"]),
+    Action(Z2, Progress)            (zone="Z2", name="Talk To Witch", internal_name="Witch", full_rule=rules["Z2 - Talk To Witch"]),
+    Action(Z2)                      (zone="Z2", name="Continue On", internal_name="ContinueOn", rule=HasIfOptionManaReduction(rules["Z2 - Old Shortcut"])),
 
-    Action(Z2, Skill)               (zone="Z2", name="Practical Magic", internal_name="Practical", action_name="Practical Magic", internal_action_name="PracticalMagic"),
+    Action(Z2, Skill)               (zone="Z2", name="Practical Magic", internal_name="Practical", action_name="Practical Magic", internal_action_name="PracticalMagic", rule=HasIfOptionManaReduction(rules["Z2 - Talk To Hermit"]) & HasIfOptionVanillaEasy(rules["Has Magic"]) & HasIfOptionVanillaHard(rules["Z2 - Talk To Hermit"])),
     # *techincally* there's a rule here for 10 herbs but pffft that's not going to be an issue
-    Action(Z2, Skill)               (zone="Z2", name="Alchemy", action_name="Learn Alchemy", internal_action_name="LearnAlchemy", option="alchemy", every=5),
-    Action(Z2, Skill)               (zone="Z2", name="Dark Magic", internal_name="Dark", action_name="Dark Magic", internal_action_name="DarkMagic", rule=Has("Z1 - Haggle")),
-    # So many rules
-    Action(Z2, Buff)                (zone="Z2", name="Ritual", action_name="Dark Ritual", internal_action_name="DarkRitual", option="ritual", every=1, rule=Has("Z2 - Dark Magic") & Has("Z1 - Haggle") & HasSoulstones),
+    Action(Z2, Skill)               (zone="Z2", name="Alchemy", action_name="Learn Alchemy", internal_action_name="LearnAlchemy", option="alchemy", every=5, full_rule=rules["Has Alchemy"]),
+    Action(Z2, Skill)               (zone="Z2", name="Dark Magic", internal_name="Dark", action_name="Dark Magic", internal_action_name="DarkMagic", full_rule=rules["Has Dark Magic"]),
+    Action(Z2, Buff)                (zone="Z2", name="Ritual", action_name="Dark Ritual", internal_action_name="DarkRitual", option="ritual", every=1, rule=Has("Z2 - Dark Magic") & Has("Z1 - Haggle") & rules["Has Soulstones"] & HasIfOptionManaReduction(rules["Z2 - Talk To Witch"]) & HasIfOptionVanillaEasy(rules["Has Dark Magic"]) & HasIfOptionVanillaHard(rules["Z2 - Talk To Witch"])),
 
     # Zone 3
     Action(Z3, Progress)            (zone="Z3", name="Explore City", internal_name="City"),
-    Action(Z3, Limited)             (zone="Z3", name="Gamble", count=20, rule=Has("Z3 - Explore City")),
-    Action(Z3, Progress)            (zone="Z3", name="Get Drunk", internal_name="Drunk"),
+    Action(Z3, Limited)             (zone="Z3", name="Gamble", count=20, rule=Has("Z3 - Explore City") & HasIfOptionVanillaHard("Z3 - Explore City")),
+    Action(Z3, Progress)            (zone="Z3", name="Get Drunk", internal_name="Drunk", full_rule=rules["Z3 - Get Drunk"]),
     Action(Z3)                      (zone="Z3", name="Buy Mana", internal_name="BuyMana"),
     Action(Z3)                      (zone="Z3", name="Sell Potions", internal_name="SellPotions", rule=Has("Z2 - Brew Potions")),
-    Action(Z3)                      (zone="Z3", name="Gather Team", internal_name="GatherTeam", rule=Has("Z3 - Adventure Guild")),
-    Action(Z3, Progress)            (zone="Z3", name="Apprentice", rule=Has("Z3 - Crafting Guild")),
-    Action(Z3, Progress)            (zone="Z3", name="Mason", rule=Has("Z3 - Crafting Guild")),
-    Action(Z3, Progress)            (zone="Z3", name="Architect", rule=Has("Z3 - Crafting Guild")),
+    Action(Z3, Multipart)           (zone="Z3", name="Adventure Guild", internal_name="AdvGuild", rule=HasIfOptionVanillaHard(rules["Z3 - Get Drunk"])),
+    Action(Z3)                      (zone="Z3", name="Gather Team", internal_name="GatherTeam", rule=Has("Z3 - Adventure Guild") & HasIfOptionVanillaHard(rules["Z3 - Get Drunk"])),
+    Action(Z3, Multipart)           (zone="Z3", name="Crafting Guild", internal_name="CraftGuild", rule=HasIfOptionVanillaHard(rules["Z3 - Get Drunk"])),
+    Action(Z3)                      (zone="Z3", name="Craft Armor", internal_name="CraftArmor", rule=HasIfOptionVanillaHard(rules["Z3 - Get Drunk"])),
+    Action(Z3, Progress)            (zone="Z3", name="Apprentice", full_rule=rules["Z3 - Apprentice"]),
+    Action(Z3, Progress)            (zone="Z3", name="Mason", full_rule=rules["Z3 - Mason"]),
+    Action(Z3, Progress)            (zone="Z3", name="Architect", full_rule=rules["Z3 - Architect"]),
     Action(Z3)                      (zone="Z3", name="Read Books", internal_name="ReadBooks", rule=Has("Z1 - Buy Glasses")),
     Action(Z3)                      (zone="Z3", name="Buy Pickaxe", internal_name="BuyPickaxe"),
     Action(Z3)                      (zone="Z3", name="Start Trek", internal_name="StartTrek"),
 
 
-    Action(Z3, Shop)                (zone="Z3", name="AP Shop", internal_name="APShop", min=500, max=1000, option="z3_shop", rule=Has("Z2 - Brew Potions") | Has("Z2 - Practical Magic")),
+    Action(Z3, Shop)                (zone="Z3", name="AP Shop", internal_name="APShop", min=500, max=1000, option="z3_shop", rule=(Has("Z2 - Brew Potions") & rules["Has Alchemy"]) | Has("Z2 - Practical Magic")),
 
     # I'm going to say the guilds are Z5+, but you still need the item for Gather Team/LDungeon/Architect bars
-    Action(Z3, Multipart)           (zone="Z3", name="Adventure Guild", internal_name="AdvGuild"),
-    Action(Z3, AddRule, Multipart)  (zone="Z3", name="Large Dungeon", internal_name="LDungeon", option="ld", rule=Has("Z3 - Adventure Guild") & Has("Z3 - Gather Team") & Has("Z1 - Warrior Lessons") & Has("Z1 - Mage Lessons"), add_rule_at=3, rule2=Has("Z4 - Pyromancy")),
-    Action(Z3, Multipart)           (zone="Z3", name="Crafting Guild", internal_name="CraftGuild"),
+    Action(Z3, AddRule, Multipart)  (zone="Z3", name="Large Dungeon", internal_name="LDungeon", option="ld", rule=rules["Z3 - Large Dungeon"], add_rule_at=3, rule2=rules["Has Pyromancy"]),
 
     # Zone 4
     Action(Z4, Progress)            (zone="Z4", name="Climb Mountain", internal_name="Mountain"),
     Action(Z4, Limited)             (zone="Z4", name="Mana Geyser", internal_name="Geysers", count=10, rule=Has("Z4 - Climb Mountain") & Has("Z3 - Buy Pickaxe")),
-    Action(Z4, Progress)            (zone="Z4", name="Decipher Runes", internal_name="Runes"),
-    Action(Z4, Progress)            (zone="Z4", name="Explore Cavern", internal_name="Cavern"),
-    Action(Z4, Limited)             (zone="Z4", name="Soulstone", internal_name="MineSoulstones", count=30, rule=Has("Z4 - Explore Cavern") & Has("Z3 - Buy Pickaxe")),
-    Action(Z4, Progress)            (zone="Z4", name="Check Walls", internal_name="Illusions"),
-    Action(Z4, Limited)             (zone="Z4", name="Artifact", internal_name="Artifacts", count=20, rule=Has("Z4 - Check Walls")),
+    Action(Z4, Progress)            (zone="Z4", name="Decipher Runes", internal_name="Runes", full_rule=rules["Z4 - Decipher Runes"]),
+    Action(Z4, Progress)            (zone="Z4", name="Explore Cavern", internal_name="Cavern", full_rule=rules["Z4 - Explore Cavern"]),
+    Action(Z4, Limited)             (zone="Z4", name="Soulstone", internal_name="MineSoulstones", count=30, rule=rules["Z4 - Explore Cavern"] & Has("Z3 - Buy Pickaxe")),
+    Action(Z4, Progress)            (zone="Z4", name="Check Walls", internal_name="Illusions", full_rule=rules["Z4 - Check Walls"]),
+    Action(Z4, Limited)             (zone="Z4", name="Artifact", internal_name="Artifacts", count=20, rule=rules["Z4 - Check Walls"]),
     # Can get to +-50 rep. -50 path has haggle and PM to have enough mana to do 50 Dark Magic actions
     Action(Z4)                      (zone="Z4", name="Face Judgement", internal_name="FaceJudgement", rule=((Has("Z1 - Heal The Sick") & Has("Z1 - Mage Lessons")) | (Has("Z2 - Talk To Witch") & Has("Z2 - Dark Magic") & Has("Z1 - Haggle") & Has("Z2 - Practical Magic")))),
 
-    Action(Z4, Multipart)           (zone="Z4", name="Hunt Trolls", internal_name="HuntTrolls", option="trolls", rule=Has("Z1 - Warrior Lessons") & Has("Z4 - Pyromancy")),
+    Action(Z4, Multipart)           (zone="Z4", name="Hunt Trolls", internal_name="HuntTrolls", option="trolls", rule=rules["Has Combat"] & rules["Has Pyromancy"] & HasIfOptionVanillaHard(rules["Z4 - Explore Cavern"])),
 
-    Action(Z4, Skill)               (zone="Z4", name="Chronomancy", action_name="Chronomancy"),
-    Action(Z4, Skill)               (zone="Z4", name="Pyromancy", action_name="Pyromancy"),
-    Action(Z4, Buff)                (zone="Z4", name="Imbue Mind", action_name="Imbue Mind", internal_name="Imbuement", option="mind", every=1)
+    Action(Z4, Skill)               (zone="Z4", name="Chronomancy", action_name="Chronomancy", rule=HasIfOptionVanillaEasy(rules["Has Magic"]) & HasIfOptionVanillaHard(rules["Z4 - Decipher Runes"])),
+    Action(Z4, Skill)               (zone="Z4", name="Pyromancy", action_name="Pyromancy", full_rule=rules["Has Pyromancy"]),
+    Action(Z4, Buff)                (zone="Z4", name="Imbue Mind", action_name="Imbue Mind", internal_name="Imbuement", option="mind", every=1, rule=HasIfOptionVanillaEasy(rules["Has Magic"]) & HasIfOptionVanillaHard(rules["Z4 - Check Walls"]))
 ]
 
 all_actions = all_actions + filler_actions

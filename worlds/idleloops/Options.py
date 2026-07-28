@@ -21,30 +21,38 @@ class Goal(Choice):
     default = 0
 
 
-class Sphere1(DefaultOnToggle):
+class LogicBigSphere1(Toggle):
     """Puts Meet People and Investigate in Sphere 1 (i.e. Somewhere that doesn't require any items to access)
-    to make it harder to be blocked early.
+    to make it harder to be blocked early, but makes Z1 feel samey.
 
     Also, if the options you want create a restrictive start (i.e. fails to generate), having this on will help.
 
-    Regardless of this option, Buy Mana is always a Local Sphere 0 item (meaning it's guaranteed to be in Wander or Pots)"""
-    display_name = "Force Early Meet People/Investigate"
+    Regardless of this option, Buy Mana is always a Local Sphere 1 item (meaning it's guaranteed to be in Wander or Pots)"""
+    display_name = "Logic: Force Early Meet People/Investigate"
 
 
 class LogicVanilla(Choice):
     """Respect vanilla requirements for actions.
 
-    Off: The only requirement for an action is reciving its item (Well, and in-loop requirements like rep).
+    Off: The only requirement for an action is receiving its item (Well, and in-loop requirements like rep).
 
     Easy: Requirements like Small Dungeon requiring (Magic + Combat = 35) or PM requiring 50 Magic exist, but not progress bar requirements like PM requiring 25% Hermit Knowledge.
-    It's a somewhat arbitrary set of what i think sounds fun (and feedback ofc), like there's almost no reason to level Magic without Hermit/Witch requiring it.
+    Provides a reason to level Magic outside of the checks on itself.
 
-    Hard: All vanilla requirements."""
+    Hard: All vanilla requirements. Might feel quite close to vanilla as most actions have a progress bar requirement, constraining logic quite heavily."""
     display_name = "Logic: Vanilla Requirements"
     option_off = 0
     option_easy = 1
     option_hard = 2
     default = 1
+
+
+class LogicManaReduction(DefaultOnToggle):
+    """Should the randomiser consider Actions that reduce the Mana Cost of other Actions (Like Old Shortcut and Continue On, Talk To Witch and Dark Magic etc...)
+    a logical requirement?
+
+    Also includes Old Shortcut making Talk To Hermit give more Hermit Knowledge, that's basically the same thing despite not being a reduction."""
+    display_name = "Logic: Mana Reduction Actions"
 
 
 class LogicFight(Range):
@@ -364,26 +372,18 @@ class SoulLink(Toggle):
 #     display_name = "Energy Link"
 
 
-class UICrime(DefaultOnToggle):
+class ModUICrime(DefaultOnToggle):
     """Replaces the confusing and obtuse n <- n <- n UI for Lootables with n / n Unchecked: n
     Which you can actually parse without having to already know what it means."""
-    display_name = "Fix Vanilla UI Crime"
-
-# class Logic(Choice):
-#     """If anyone is reading these comments every version, i've got at just one idea for hard logic now,
-#     You can see it in Rules.py, but to repeat here it's enabling mana logic with ~5 mana per lock before
-#     you have enough to do a short quest and buy mana from starting mana/pots alone.
-#     Accepting ideas from the 0 people who would read this.
-#     """
-#     option_normal = 0
-#     option_hard = 1
-#     default = 0
+    display_name = "Mod: Fix Vanilla UI Crime"
 
 
 @dataclass
 class IdleLoopsOptions(DeathLinkMixin, PerGameCommonOptions):
     goal: Goal
-    sphere1: Sphere1
+    logic_big_sphere1: LogicBigSphere1
+    logic_vanilla: LogicVanilla
+    logic_mana_reduction: LogicManaReduction
     logic_fight: LogicFight
     logic_glasses: LogicGlasses
     item_glasses: ItemGlasses
@@ -416,5 +416,4 @@ class IdleLoopsOptions(DeathLinkMixin, PerGameCommonOptions):
     bonus: Bonus
     soul_link: SoulLink
     # energy_link: EnergyLink
-    ui_crime: UICrime
-    # logic: Logic
+    mod_ui_crime: ModUICrime

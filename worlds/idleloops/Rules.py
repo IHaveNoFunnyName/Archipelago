@@ -1,20 +1,56 @@
 from dataclasses import dataclass
 from math import floor
-from typing import override
+from optparse import Option
+from typing import Any, Optional, TypedDict, override
 
 from BaseClasses import CollectionState
-from rule_builder.options import OptionFilter
+from rule_builder.options import Operator, OptionFilter
 from rule_builder.rules import Has, HasFromList, Rule, True_
-from worlds.idleloops.Actions import IdleLoopsOptionsClass
-from worlds.stardew_valley.stardew_rule import state
+from worlds.idleloops.Options import IdleLoopsOptions
 
-HasSoulstones = (
-    (Has("Z1 - Small Dungeon") & (Has("Z1 - Mage Lessons") | Has("Z1 - Warrior Lessons"))) |
-    (Has("Z3 - Large Dungeon") & Has("Z2 - Continue On") & Has("Z3 - Adventure Guild") & Has("Z3 - Gather Team") & Has("Z1 - Warrior Lessons") & Has("Z1 - Mage Lessons")) |
-    (Has("Z2 - Continue On") & Has("Z3 - Start Trek") & Has("Z3 - Buy Pickaxe") & Has("Z4 - Soulstone"))
-)
 
-HasGlassesLogic = Has("Z1 - Buy Glasses", options=[OptionFilter(IdleLoopsOptionsClass.logic_glasses, 1)], filtered_resolution=True)
+def HasIfOptionManaReduction(action: str | Rule) -> Rule:
+    return (Has(action) if isinstance(action, str) else action) | OptionFilter(IdleLoopsOptions.logic_mana_reduction, 0)
+
+
+def HasIfOptionVanillaEasy(action: str | Rule) -> Rule:
+    return (Has(action) if isinstance(action, str) else action) | OptionFilter(IdleLoopsOptions.logic_vanilla, 1, operator="lt")
+
+
+def HasIfOptionVanillaHard(action: str | Rule) -> Rule:
+    return (Has(action) if isinstance(action, str) else action) | OptionFilter(IdleLoopsOptions.logic_vanilla, 2, operator="lt")
+
+
+# I found myself having to think though how exactly OptionFilter was used *every single time* i looked at or used it,
+# Was filtered resolution used when the option was true or false?
+
+# Even if i bothered to internalise that i think i'd still write this helper,
+# It seems like there's a bit of boilerplate to getting an if/else rule.
+
+class conditionType(TypedDict):
+    option: type[Option[IdleLoopsOptions]]
+    value: Optional[Any]
+    operator: Optional[Operator]
+
+
+operator_inverse: dict[Operator, Operator] = {
+    "eq": "ne",
+    "ne": "eq",
+    "gt": "le",
+    "lt": "ge",
+    "ge": "lt",
+    "le": "gt",
+}
+
+
+def IfOption(condition: conditionType, true: Rule, false: Rule = None) -> Rule:
+    if false is None:
+        false = True_()
+    if condition["value"] is None:
+        condition["value"] = 1
+    if condition["operator"] is None:
+        condition["operator"] = "eq"
+    return (true & OptionFilter(condition["option"], condition["value"], operator=condition["operator"])) | (false & OptionFilter(condition["option"], condition["value"], operator=operator_inverse[condition["operator"]]))
 
 
 def has_mana_from_state(mana_goal: int, fight_segments: int, state: CollectionState, player: int) -> int:
@@ -154,3 +190,55 @@ class JourneyRule(Rule["IdleLoopsWorld"], game="Idle Loops"):
             # Buy Supplies + Start Journey + 15 haggles + extra mana (Well, mana in it's unbought gold form) for each haggle under 15
             # I want to do this but clearly it won't work as it's not passed world or player or state
             return has_mana_from_state(1200 + 1500 + ((15 - haggles) * 900), self.fight_segments, state, self.player)
+
+
+# TODO: Here I go, not colocating things again!
+# To fit with what i do everywhere else for actions, i should make it so this Just Works as a part of Action
+# Like being able to do rule=Action("Z1 - Meet People").rule() or something
+# But that'd be a refactor and this is less thinky
+
+# Most rules are defined on Actions, and rules are added to the world via Actions.
+# This is to store reusable rules.
+rules = []
+
+rules["Z1 - Meet People"] = (Has("Z1 - Meet People") & HasMana(800))
+# You'd expect the Vanilla Hard rule to need "Meet People Progress" instead, but the difference between them is the addition of Throw Party
+# Which is locked behind Meet People already via Investigate, so it would cause an infinite loop.
+rules["Z1 - Investigate"] = Has("Z1 - Investigate") & HasMana(1000) & HasIfOptionVanillaHard(rules["Z1 - Meet People"])
+rules["Z1 - Throw Party"] = Has("Z1 - Throw Party") & HasFromList("Z1 - Long Quest", "Filler - Progressive Lootable", count=2) & HasMana(1600) & HasIfOptionVanillaHard(rules["Z1 - Investigate"])
+# Extra rule because Throw Party also gives progress to everything Meet People does.
+rules["Meet People Progress"] = rules["Z1 - Meet People"] | rules["Z1 - Throw Party"]
+rules["Z1 Has Combat"] = Has("Z1 - Warrior Lessons") & HasFromList("Z1 - Long Quest", "Filler - Progressive Lootable", count=2) & HasMana(1000) & HasIfOptionVanillaHard(rules["Z1 - Investigate"])
+rules["Z1 Has Magic"] = Has("Z1 - Mage Lessons") & HasFromList("Z1 - Long Quest", "Filler - Progressive Lootable", count=2) & HasMana(1000) & HasIfOptionVanillaHard(rules["Z1 - Investigate"])
+
+rules["Option Has Glasses"] = Has("Z1 - Buy Glasses", options=[OptionFilter(IdleLoopsOptions.logic_glasses, 1)], filtered_resolution=True)
+
+# Simpler rules for after Z1. I'm *pretty sure* you need either heal/haggle or fight monsters to get out of Z1, so we shouldn't need to check for rep.
+rules["Has Combat"] = Has("Z1 - Warrior Lessons")
+rules["Has Magic"] = Has("Z1 - Mage Lessons")
+
+rules["Z2 - Old Shortcut"] = Has("Z2 - Old Shortcut") & HasIfOptionVanillaHard("Z2 - Explore Forest")
+rules["Z2 - Talk To Hermit"] = Has("Z2 - Talk To Hermit") & HasIfOptionManaReduction(rules["Z2 - Old Shortcut"]) & HasIfOptionVanillaEasy(rules["Has Magic"]) & HasIfOptionVanillaHard(rules["Z2 - Old Shortcut"])
+rules["Z2 - Follow Flowers"] = Has("Z2 - Follow Flowers") & HasIfOptionVanillaHard("Z2 - Explore Forest")
+rules["Z2 - Clear Thicket"] = Has("Z2 - Clear Thicket") & HasIfOptionVanillaHard("Z2 - Follow Flowers")
+rules["Z2 - Talk To Witch"] = Has("Z2 - Talk To Witch") & HasIfOptionVanillaEasy(rules["Has Magic"]) & HasIfOptionVanillaHard(rules["Z2 - Clear Thicket"])
+rules["Has Alchemy"] = Has("Z2 - Learn Alchemy") & HasIfOptionManaReduction(rules["Z2 - Talk To Hermit"]) & HasIfOptionVanillaEasy(rules["Has Magic"]) & HasIfOptionVanillaHard(rules["Z2 - Talk To Hermit"])
+rules["Has Dark Magic"] = Has("Z2 - Dark Magic") & Has("Z1 - Haggle") & HasIfOptionManaReduction(rules["Z2 - Talk To Witch"]) & HasIfOptionVanillaEasy(rules["Has Magic"]) & HasIfOptionVanillaHard(rules["Z2 - Talk To Witch"])
+
+rules["Z3 - Get Drunk"] = Has("Z3 - Get Drunk") & HasIfOptionVanillaHard("Z3 - Explore City")
+rules["Z3 - Large Dungeon"] = Has("Z3 - Large Dungeon") & Has("Z3 - Adventure Guild") & Has("Z3 - Gather Team") & rules["Has Combat"] & rules["Has Magic"] & HasIfOptionVanillaHard(rules["Z3 - Get Drunk"])
+rules["Z3 - Apprentice"] = Has("Z3 - Apprentice") & Has("Z3 - Crafting Guild") & HasIfOptionVanillaHard(rules["Z3 - Get Drunk"])
+rules["Z3 - Mason"] = Has("Z3 - Mason") & Has("Z3 - Crafting Guild") & HasIfOptionVanillaHard(rules["Z3 - Apprentice"])
+rules["Z3 - Architect"] = Has("Z3 - Architect") & Has("Z3 - Crafting Guild") & HasIfOptionVanillaHard(rules["Z3 - Mason"])
+
+rules["Z4 - Decipher Runes"] = Has("Z4 - Decipher Runes") & HasIfOptionVanillaHard(rules["Z4 - Climb Mountain"])
+rules["Z4 - Explore Cavern"] = Has("Z4 - Explore Cavern") & HasIfOptionVanillaHard(rules["Z4 - Climb Mountain"])
+rules["Z4 - Check Walls"] = Has("Z4 - Check Walls") & HasIfOptionVanillaHard(rules["Z4 - Explore Cavern"])
+
+rules["Has Soulstones"] = (
+    (Has("Z1 - Small Dungeon") & (rules["Has Magic"] | rules["Has Combat"])) |
+    (rules["Z3 - Large Dungeon"] & (Has("Z2 - Continue On") & HasIfOptionManaReduction(rules["Z2 - Old Shortcut"])) & rules["Has Magic"] & rules["Has Combat"]) |
+    (Has("Z2 - Continue On") & Has("Z3 - Start Trek") & Has("Z3 - Buy Pickaxe") & (Has("Z4 - Soulstone") & rules["Z4 - Explore Cavern"]))
+)
+
+rules["Has Pyromancy"] = Has("Z4 - Pyromancy") & HasIfOptionVanillaEasy(rules["Has Magic"]) & HasIfOptionVanillaHard(rules["Z4 - Decipher Runes"])
