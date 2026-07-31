@@ -1,24 +1,23 @@
 from dataclasses import dataclass
-from math import floor
-from optparse import Option
+from Options import Option
 from typing import Any, Optional, TypedDict, override
 
 from BaseClasses import CollectionState
 from rule_builder.options import Operator, OptionFilter
 from rule_builder.rules import Has, HasFromList, Rule, True_
-from worlds.idleloops.Options import IdleLoopsOptions
+from .Options import Goal, LogicVanilla, LogicManaReduction, LogicGlasses, IdleLoopsOptions, LogicVanillaAll
 
 
 def HasIfOptionManaReduction(action: str | Rule) -> Rule:
-    return (Has(action) if isinstance(action, str) else action) | OptionFilter(IdleLoopsOptions.logic_mana_reduction, 0)
+    return (Has(action) if isinstance(action, str) else action) | OptionFilter(LogicManaReduction, 0)
 
 
 def HasIfOptionVanillaEasy(action: str | Rule) -> Rule:
-    return (Has(action) if isinstance(action, str) else action) | OptionFilter(IdleLoopsOptions.logic_vanilla, 1, operator="lt")
+    return (Has(action) if isinstance(action, str) else action) | OptionFilter(LogicVanilla, 1, operator="lt")
 
 
 def HasIfOptionVanillaHard(action: str | Rule) -> Rule:
-    return (Has(action) if isinstance(action, str) else action) | OptionFilter(IdleLoopsOptions.logic_vanilla, 2, operator="lt")
+    return (Has(action) if isinstance(action, str) else action) | OptionFilter(LogicVanillaAll, 0)
 
 
 # I found myself having to think though how exactly OptionFilter was used *every single time* i looked at or used it,
@@ -46,11 +45,14 @@ operator_inverse: dict[Operator, Operator] = {
 def IfOption(condition: conditionType, true: Rule, false: Rule = None) -> Rule:
     if false is None:
         false = True_()
-    if condition["value"] is None:
+    if "value" not in condition:
         condition["value"] = 1
-    if condition["operator"] is None:
+    if "operator" not in condition:
         condition["operator"] = "eq"
     return (true & OptionFilter(condition["option"], condition["value"], operator=condition["operator"])) | (false & OptionFilter(condition["option"], condition["value"], operator=operator_inverse[condition["operator"]]))
+
+
+has_mana_dependencies = ["Z1 - Mana Pot", "Filler - 50 Starting Mana", "Filler - 1 Starting Gold", "Filler - Progressive Lootable", "Z1 - Short Quest", "Z1 - Long Quest", "Z1 - Lock", "Z1 - Fight Monsters", "Z1 - Warrior Training"]
 
 
 def has_mana_from_state(mana_goal: int, fight_segments: int, state: CollectionState, player: int) -> int:
@@ -133,14 +135,20 @@ def has_mana_from_state(mana_goal: int, fight_segments: int, state: CollectionSt
 
     return mana > mana_goal
 
+# I am *shocked* that caching didn't help with this rule.
+# Also, i think the proper way to do this is to overwrite world.collect and a Mana pseudoitem
+# But hey, i already wrote this and it seems to work. The other way might be faster.
+
 
 @dataclass
 class HasMana(Rule["IdleLoopsWorld"], game="Idle Loops"):
     mana_goal: int
+    fight_segments: int = 0
 
     @override
     def _instantiate(self, world: "IdleLoopsWorld") -> Rule.Resolved:
-        return self.Resolved(self.mana_goal, fight_segments=int(world.options.logic_fight), player=world.player, caching_enabled=False)
+        self.fight_segments = int(world.options.logic_fight) if self.fight_segments == 0 else self.fight_segments
+        return self.Resolved(self.mana_goal, fight_segments=self.fight_segments, player=world.player, caching_enabled=False)
 
     class Resolved(Rule.Resolved):
         mana_goal: int
@@ -149,6 +157,10 @@ class HasMana(Rule["IdleLoopsWorld"], game="Idle Loops"):
         @override
         def _evaluate(self, state: CollectionState) -> bool:
             return has_mana_from_state(self.mana_goal, self.fight_segments, state, self.player)
+
+        @override
+        def item_dependencies(self) -> dict[str, set[int]]:
+            return {name: {id(self)} for name in has_mana_dependencies}
 
 
 class JourneyRule(Rule["IdleLoopsWorld"], game="Idle Loops"):
@@ -191,6 +203,10 @@ class JourneyRule(Rule["IdleLoopsWorld"], game="Idle Loops"):
             # I want to do this but clearly it won't work as it's not passed world or player or state
             return has_mana_from_state(1200 + 1500 + ((15 - haggles) * 900), self.fight_segments, state, self.player)
 
+        @override
+        def item_dependencies(self) -> dict[str, set[int]]:
+            return {name: {id(self)} for name in has_mana_dependencies + ["Z1 - Start Journey", "Z1 - Buy Supplies", "Z1 - Haggle", "Z1 - Heal The Sick", "Z1 - Mage Lessons"]}
+
 
 # TODO: Here I go, not colocating things again!
 # To fit with what i do everywhere else for actions, i should make it so this Just Works as a part of Action
@@ -199,9 +215,9 @@ class JourneyRule(Rule["IdleLoopsWorld"], game="Idle Loops"):
 
 # Most rules are defined on Actions, and rules are added to the world via Actions.
 # This is to store reusable rules.
-rules = []
+rules = {}
 
-rules["Z1 - Meet People"] = (Has("Z1 - Meet People") & HasMana(800))
+rules["Z1 - Meet People"] = Has("Z1 - Meet People") & HasMana(800)
 # You'd expect the Vanilla Hard rule to need "Meet People Progress" instead, but the difference between them is the addition of Throw Party
 # Which is locked behind Meet People already via Investigate, so it would cause an infinite loop.
 rules["Z1 - Investigate"] = Has("Z1 - Investigate") & HasMana(1000) & HasIfOptionVanillaHard(rules["Z1 - Meet People"])
@@ -211,7 +227,7 @@ rules["Meet People Progress"] = rules["Z1 - Meet People"] | rules["Z1 - Throw Pa
 rules["Z1 Has Combat"] = Has("Z1 - Warrior Lessons") & HasFromList("Z1 - Long Quest", "Filler - Progressive Lootable", count=2) & HasMana(1000) & HasIfOptionVanillaHard(rules["Z1 - Investigate"])
 rules["Z1 Has Magic"] = Has("Z1 - Mage Lessons") & HasFromList("Z1 - Long Quest", "Filler - Progressive Lootable", count=2) & HasMana(1000) & HasIfOptionVanillaHard(rules["Z1 - Investigate"])
 
-rules["Option Has Glasses"] = Has("Z1 - Buy Glasses", options=[OptionFilter(IdleLoopsOptions.logic_glasses, 1)], filtered_resolution=True)
+rules["Option Has Glasses"] = Has("Z1 - Buy Glasses", options=[OptionFilter(LogicGlasses, 1)], filtered_resolution=True)
 
 # Simpler rules for after Z1. I'm *pretty sure* you need either heal/haggle or fight monsters to get out of Z1, so we shouldn't need to check for rep.
 rules["Has Combat"] = Has("Z1 - Warrior Lessons")
@@ -231,8 +247,8 @@ rules["Z3 - Apprentice"] = Has("Z3 - Apprentice") & Has("Z3 - Crafting Guild") &
 rules["Z3 - Mason"] = Has("Z3 - Mason") & Has("Z3 - Crafting Guild") & HasIfOptionVanillaHard(rules["Z3 - Apprentice"])
 rules["Z3 - Architect"] = Has("Z3 - Architect") & Has("Z3 - Crafting Guild") & HasIfOptionVanillaHard(rules["Z3 - Mason"])
 
-rules["Z4 - Decipher Runes"] = Has("Z4 - Decipher Runes") & HasIfOptionVanillaHard(rules["Z4 - Climb Mountain"])
-rules["Z4 - Explore Cavern"] = Has("Z4 - Explore Cavern") & HasIfOptionVanillaHard(rules["Z4 - Climb Mountain"])
+rules["Z4 - Decipher Runes"] = Has("Z4 - Decipher Runes") & HasIfOptionVanillaHard("Z4 - Climb Mountain")
+rules["Z4 - Explore Cavern"] = Has("Z4 - Explore Cavern") & HasIfOptionVanillaHard("Z4 - Climb Mountain")
 rules["Z4 - Check Walls"] = Has("Z4 - Check Walls") & HasIfOptionVanillaHard(rules["Z4 - Explore Cavern"])
 
 rules["Has Soulstones"] = (
@@ -241,4 +257,4 @@ rules["Has Soulstones"] = (
     (Has("Z2 - Continue On") & Has("Z3 - Start Trek") & Has("Z3 - Buy Pickaxe") & (Has("Z4 - Soulstone") & rules["Z4 - Explore Cavern"]))
 )
 
-rules["Has Pyromancy"] = Has("Z4 - Pyromancy") & HasIfOptionVanillaEasy(rules["Has Magic"]) & HasIfOptionVanillaHard(rules["Z4 - Decipher Runes"])
+rules["Has Pyromancy"] = OptionFilter(Goal, 4, "lt") | Has("Z4 - Pyromancy") & HasIfOptionManaReduction(rules["Z4 - Decipher Runes"]) & HasIfOptionVanillaEasy(rules["Has Magic"]) & HasIfOptionVanillaHard(rules["Z4 - Decipher Runes"])
