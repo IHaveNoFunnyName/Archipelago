@@ -272,16 +272,16 @@ class Batched(Limited):
         self.batch_size = batch_size
 
     def batched_location_list(self) -> List[str]:
-        return [f"{self.zone} - x{self.batch_size} {self.name} - #{i}" for i in range(1, (self.count + self.batch_size - 1) // self.batch_size + 1)]
+        return [f"{self.zone} - x{self.batch_size} {self.name} - #{i}" for i in range(1, ((self.count + self.batch_size - 1) // self.batch_size) + 1)]
 
     def location_list(self) -> List[str]:
         return super().location_list() + self.batched_location_list()
 
     def included_locations(self, options: IdleLoopsOptions) -> List[Tuple[int, int]]:
         if options.batch_z2:
-            return [(name, self.region) for name in self.batched_location_list()]
+            return [(name, self.name) for name in self.batched_location_list()]
         else:
-            return [(name, self.region) for name in super().location_list()]
+            return [(name, self.name) for name in super().location_list()]
 
     def batched_items(self) -> List[str]:
         return [{
@@ -421,7 +421,7 @@ class Skill(Region):
         self.action_name = action_name if action_name is not None else self.name
         self.internal_action_name = internal_action_name if internal_action_name is not None else self.action_name
         self.option = option
-        self.location_numbers = ([1] if every > 1 else []) + list(range(every, IdleLoopsOptionsClass.__annotations__["location_" + self.option].range_end + 1, every))
+        self.location_numbers = ([1, 2, 3, 4, 5, 6, 7, 8, 9, 10] if every > 1 else []) + list(range(10 + every, IdleLoopsOptionsClass.__annotations__["location_" + self.option].range_end + 1, every))
 
     def unlock_item_name(self) -> str:
         return f"{self.zone} - {self.action_name}"
@@ -461,6 +461,8 @@ class Filler():
     (the ones with 0 are intended to be added by the World to balance locations and items)"""
 
     def __init__(self, option: str = None, **kwargs):
+        if "classification" not in kwargs:
+            kwargs["classification"] = ItemClassification.progression_deprioritized_skip_balancing
         super().__init__(zone="Filler", **kwargs)
         self.option = option
 
@@ -488,6 +490,8 @@ class Z3():
     """Puts locations into the Z3 region, requiring the rule put on the region and excluding it from games with an earlier goal."""
 
     def __init__(self, **kwargs):
+        if "classification" not in kwargs:
+            kwargs["classification"] = ItemClassification.progression_skip_balancing
         super().__init__(**kwargs)
         self.region = "Z3"
 
@@ -496,6 +500,8 @@ class Z4():
     """Puts locations into the Z4 region, requiring the rule put on the region and excluding it from games with an earlier goal."""
 
     def __init__(self, **kwargs):
+        if "classification" not in kwargs:
+            kwargs["classification"] = ItemClassification.progression_skip_balancing
         super().__init__(**kwargs)
         self.region = "Z4"
 
@@ -506,7 +512,7 @@ filler_actions = [
     Action(Filler)(name="1 Starting Gold"),
     # Progressive lootable acts as an extra count for limited actions, (up to their usual max, for when you don't have them capped) in rough order of usefullness/progression
     # Long Quests (up to 2) > Short Quests > Long Quests (Rest) > Locks > Wild Mana ... > n-1 > Mana Pot
-    Action(Filler)(name="Progressive Lootable", option="progressive_lootable"),
+    Action(Filler)(name="Progressive Lootable", option="progressive_lootable", classification=ItemClassification.progression),
     Action(Filler)(name="+0.1 Game Speed", option="game_speed", classification=ItemClassification.filler),
     Action(Filler)(name="+0.1 Exp Multiplier", option="exp_mult", classification=ItemClassification.filler),
     Action(Filler)(name="Nothing", classification=ItemClassification.filler),
@@ -523,8 +529,8 @@ filler_actions = [
 all_actions: List[_Action] = [
     # Zone 1
     Action(Start, Progress, AddRule)(zone="Z1", name="Wander", rule2name="glasses", add_rule_at=9, rule2=rules["Option Has Glasses"]),
-    Action(Start, Limited, AddRule) (zone="Z1", name="Mana Pot", internal_name="Pots", count=50, rule2name="glasses", add_rule_at=25, rule2=rules["Option Has Glasses"]),
-    Action(Limited, AddRule)        (zone="Z1", name="Lock", internal_name="Locks", count=10, rule2name="glasses", add_rule_at=5, rule2=rules["Option Has Glasses"]),
+    Action(Start, Limited, AddRule) (zone="Z1", name="Mana Pot", internal_name="Pots", count=50, lootable_classification=ItemClassification.progression_deprioritized_skip_balancing, rule2name="glasses", add_rule_at=26, rule2=rules["Option Has Glasses"]),
+    Action(Limited, AddRule)        (zone="Z1", name="Lock", internal_name="Locks", count=10, rule2name="glasses", add_rule_at=6, rule2=rules["Option Has Glasses"]),
     Action()                        (zone="Z1", name="Buy Glasses", internal_name="BuyGlasses",
                                      rule=HasFromList("Z1 - Lock", "Z1 - Short Quest", "Z1 - Long Quest", "Filler - Progressive Lootable", count=1) | Has("Filler - 1 Starting Gold", 10)
                                      ),

@@ -107,7 +107,7 @@ class ItemSearch(DefaultOnToggle):
 
 
 class LocationSkill(NamedRange):
-    """Add an item every 10 levels up to this value for:
+    """Add an item at 1-10 then every 10 levels up to this value for:
     Combat, Magic, Practical Magic, Dark Magic, Chronomancy and Pyromancy.
 
     "default" is based on goal (Z1 = 30, Z2 = 100, Z3 = 200, Z4 = 300)
@@ -125,7 +125,7 @@ class LocationSkill(NamedRange):
 
 
 class LocationAlchemy(NamedRange):
-    """Add an item every 5 levels up to this value for Alchemy.
+    """Add an item at 1-10 then every 5 levels up to this value for Alchemy.
 
     "default" is based on goal (Z2 = 25, Z3 = 50, Z4 = 75)
     These values are also what's in logic for each Zone."""
@@ -144,7 +144,7 @@ class LocationCrafting(NamedRange):
     Or even that crafting existed as a skill.
     How'd I miss it for previous apworld versions? I had the crafting guild!
 
-    Add an item every 5 levels up to this value for Crafting.
+    Add an item at 1-10 then every 5 levels up to this value for Crafting.
 
     "default" is based on goal (Z3 = 25, Z4 = 50)
     These values are also what's in logic for each Zone."""
@@ -333,6 +333,12 @@ class BatchZ2(Toggle):
     """
     display_name = "Batch Herbs/Wild Mana 10x"
     visibility = Visibility.none
+
+
+class ItemPots(DefaultOnToggle):
+    """Removes the 50 "Z1 - Mana Pot" items from Vanilla from the randomiser.
+    This won't make your average """
+    display_name = "Filler Item: Remove Vanilla 50 Mana Pots"
 
 
 class FillerStartingMana(DefaultOnToggle):

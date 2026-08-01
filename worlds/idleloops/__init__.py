@@ -221,6 +221,12 @@ class IdleLoopsWorld(World):
     def fill_slot_data(self) -> Dict[str, Any]:
         return self.options.as_dict(
             "goal",
+            "location_z1_shop",
+            "z1_shop_min",
+            "z1_shop_max",
+            "location_z3_shop",
+            "z3_shop_min",
+            "z3_shop_max",
             "game_speed",
             "stat_exp_mult",
             "skill_exp_mult",
