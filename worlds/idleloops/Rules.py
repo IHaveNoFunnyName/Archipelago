@@ -55,7 +55,7 @@ def IfOption(condition: conditionType, true: Rule, false: Rule = None) -> Rule:
 has_mana_dependencies = ["Z1 - Mana Pot", "Filler - 50 Starting Mana", "Filler - 1 Starting Gold", "Filler - Progressive Lootable", "Z1 - Short Quest", "Z1 - Long Quest", "Z1 - Lock", "Z1 - Fight Monsters", "Z1 - Warrior Training"]
 
 
-def has_mana_from_state(mana_goal: int, fight_segments: int, state: CollectionState, player: int) -> int:
+def has_mana_from_state(mana_goal: int, rep_goal: int, fight_segments: int, state: CollectionState, player: int) -> bool:
     # Simulate gaining gold with the most effecient action then selling it for mana
     # Fight Monsters is considered at 9 segments/180 gold in one action
     # You usually wouldn't grind that much combat in Z1 (the only place this rule should be used - you should always have enough mana after that)
@@ -80,6 +80,9 @@ def has_mana_from_state(mana_goal: int, fight_segments: int, state: CollectionSt
             LQuests += old_extra
     rep = LQuests
     SQuests = state.count("Z1 - Short Quest", player) + max(extra, 0)
+
+    if rep < rep_goal:
+        return False
 
     # TODO: Abstract/generalise?
     # Eh, not worth
@@ -143,20 +146,20 @@ def has_mana_from_state(mana_goal: int, fight_segments: int, state: CollectionSt
 @dataclass
 class HasMana(Rule["IdleLoopsWorld"], game="Idle Loops"):
     mana_goal: int
-    fight_segments: int = 0
+    rep_goal: int = 0
 
     @override
     def _instantiate(self, world: "IdleLoopsWorld") -> Rule.Resolved:
-        self.fight_segments = int(world.options.logic_fight) if self.fight_segments == 0 else self.fight_segments
-        return self.Resolved(self.mana_goal, fight_segments=self.fight_segments, player=world.player, caching_enabled=False)
+        return self.Resolved(self.mana_goal, rep_goal=self.rep_goal, fight_segments=int(world.options.logic_fight), player=world.player, caching_enabled=False)
 
     class Resolved(Rule.Resolved):
         mana_goal: int
+        rep_goal: int
         fight_segments: int
 
         @override
         def _evaluate(self, state: CollectionState) -> bool:
-            return has_mana_from_state(self.mana_goal, self.fight_segments, state, self.player)
+            return has_mana_from_state(self.mana_goal, self.rep_goal, self.fight_segments, state, self.player)
 
         @override
         def item_dependencies(self) -> dict[str, set[int]]:
@@ -201,7 +204,7 @@ class JourneyRule(Rule["IdleLoopsWorld"], game="Idle Loops"):
 
             # Buy Supplies + Start Journey + 15 haggles + extra mana (Well, mana in it's unbought gold form) for each haggle under 15
             # I want to do this but clearly it won't work as it's not passed world or player or state
-            return has_mana_from_state(1200 + 1500 + ((15 - haggles) * 900), self.fight_segments, state, self.player)
+            return has_mana_from_state(1200 + 1500 + ((15 - haggles) * 900), 0, self.fight_segments, state, self.player)
 
         @override
         def item_dependencies(self) -> dict[str, set[int]]:
@@ -221,11 +224,12 @@ rules["Z1 - Meet People"] = Has("Z1 - Meet People") & HasMana(800)
 # You'd expect the Vanilla Hard rule to need "Meet People Progress" instead, but the difference between them is the addition of Throw Party
 # Which is locked behind Meet People already via Investigate, so it would cause an infinite loop.
 rules["Z1 - Investigate"] = Has("Z1 - Investigate") & HasMana(1000) & HasIfOptionVanillaHard(rules["Z1 - Meet People"])
-rules["Z1 - Throw Party"] = Has("Z1 - Throw Party") & HasFromList("Z1 - Long Quest", "Filler - Progressive Lootable", count=2) & HasMana(1600) & HasIfOptionVanillaHard(rules["Z1 - Investigate"])
+rules["Z1 - Throw Party"] = Has("Z1 - Throw Party") & HasMana(1600, 2) & HasIfOptionVanillaHard(rules["Z1 - Investigate"])
 # Extra rule because Throw Party also gives progress to everything Meet People does.
 rules["Meet People Progress"] = rules["Z1 - Meet People"] | rules["Z1 - Throw Party"]
-rules["Z1 Has Combat"] = Has("Z1 - Warrior Lessons") & HasFromList("Z1 - Long Quest", "Filler - Progressive Lootable", count=2) & HasMana(1000) & HasIfOptionVanillaHard(rules["Z1 - Investigate"])
-rules["Z1 Has Magic"] = Has("Z1 - Mage Lessons") & HasFromList("Z1 - Long Quest", "Filler - Progressive Lootable", count=2) & HasMana(1000) & HasIfOptionVanillaHard(rules["Z1 - Investigate"])
+# The training actions themselves take 1k, but you need enough to do long quests.
+rules["Z1 Has Combat"] = Has("Z1 - Warrior Lessons") & HasMana(1600, 2) & HasIfOptionVanillaHard(rules["Z1 - Investigate"])
+rules["Z1 Has Magic"] = Has("Z1 - Mage Lessons") & HasMana(1600, 2) & HasIfOptionVanillaHard(rules["Z1 - Investigate"])
 
 rules["Option Has Glasses"] = Has("Z1 - Buy Glasses", options=[OptionFilter(LogicGlasses, 1)], filtered_resolution=True)
 
