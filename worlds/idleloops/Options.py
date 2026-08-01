@@ -422,7 +422,7 @@ class Bonus(Choice):
     """How much bonus time to start with."""
     display_name = "Bonus Time"
     option_none = 0
-    option_1_hour = 3600000
+    option_5_hours = 18000000
     option_1_day = 86400000
     option_1_week = 604800000
     option_infinite = 9999999999999
