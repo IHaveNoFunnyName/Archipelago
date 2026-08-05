@@ -1,85 +1,52 @@
 from dataclasses import dataclass
 
-from Options import Choice, DeathLinkMixin, DefaultOnToggle, NamedRange, PerGameCommonOptions, Range, Toggle, Visibility
+from Options import Choice, DeathLinkMixin, DefaultOnToggle, NamedRange, OptionGroup, PerGameCommonOptions, Range, Toggle, Visibility
 
 
 class Goal(Choice):
-    """- Zone 1: Complete "Start Journey". Should take a few hours.
+    """- Z1: Complete "Start Journey". Should take a few hours.
     (With 2-4x gamespeed).
 
-    - Zone 2: Complete "Continue On".
+    - Z2: Complete "Continue On".
 
-    - Zone 3: Complete "Start Trek".
+    - Z3: Complete "Start Trek".
 
-    - Zone 4: Complete "Face Judgement" with 50 or -50 reputation.
+    - Z4: Complete "Face Judgement" with 50 or -50 reputation.
     Should take around a week (with 5-7x gamespeed).
 
     Content from Zones above the goal is not randomised."""
     display_name = "Goal"
-    option_zone_1 = 0
-    option_zone_2 = 1
-    option_zone_3 = 2
-    option_zone_4 = 3
+    option_z1 = 0
+    option_z2 = 1
+    option_z3 = 2
+    option_z4 = 3
     default = 0
 
 
-class LogicBigSphere1(Toggle):
-    """Find Meet People and Investigate early.
-    Reduces the chance of a fill error.
-    Gives a warning if this is not enabled for a Z3+ goal.
+class LogicVanilla(Toggle):
+    """Respect Vanilla Skill requirements.
+    e.g. With this on Buy Supplies requires (Combat + Magic) >= 35.
 
-    Regardless of this option, Buy Mana is always found early."""
-    display_name = "Logic: Force Early Meet People/Investigate"
-
-
-class LogicVanilla(Choice):
-    """Respect vanilla requirements for actions.
-
-    Off: The only requirement for an action is receiving its item
-    (Well, and in-loop requirements like rep).
-
-    Skill: Skill requirements (Combat/Magic etc...) are Vanilla,
-    but Progress Bar requirements are ignored.
-
-    All: A hidden unsupported option, for all Vanilla requirements.
-    It feels too close to Vanilla as most actions have a Progress requirement.
-    (i.e. Z1 *has* to be Wander > Meet People > Investigate > Combat/Magic)
-    and such constrained logic leads to fill errors (why it's unsupported).
-    To enable add `logic_vanilla_all: 'true'` to the .yaml.
-    This is bad UX, but i needed friction to make clear that it's unsupported."""
-    display_name = "Logic: Vanilla Requirements"
-    option_off = 0
-    option_skill = 1
-    default = 1
+    Progress Bar requirements are ignored."""
+    display_name = "Logic: Vanilla Skill Requirements"
 
 
 class LogicVanillaAll(Toggle):
-    display_name = "hidden"
-    visibility = Visibility.none
+    """UNSUPPORTED: Respect Vanilla Skill and Progress bar
+    requirements for actions.
+
+    Overwrites "Logic: Vanilla Skill Requirements" if enabled.
+
+    Unsupported because it contrains logic enough to cause
+    Fill Errors, and having it on leads to gameplay
+    way too close to vanilla. Buutt, I did finish the logic
+    so that'll go to waste without this option."""
+    display_name = "Logic: Vanilla Requirements (All)"
 
 
-class LogicManaReduction(Toggle):
-    """Makes Actions that reduce the Mana Cost of other Actions a requirement
-    for what they reduce.
-    (Also includes Old Shortcut for Talk To Hermit)"""
-    display_name = "Logic: Mana Reduction Actions"
-
-
-class LogicFight(Range):
-    """The randomizer knows how much mana you have access to (In Z1).
-    As the gold you get from Fight Monsters is variable,
-    it needs to know how much you want to grind it up.
-    9 takes some grinding a bit for, but it pays off to have done in Z2+.
-    3-5 is more reasonable for a not-grindy z1 goal."""
-    display_name = "Logic: Fight Monsters Segments"
-    range_start = 1
-    range_end = 9
-    default = 9
-
-
-class LogicGlasses(Toggle):
-    """Forces Glasses to appear in Z1 (And available before 50% of Wander)."""
-    display_name = "Logic: Buy Glasses in Z1"
+class LogicGlasses(DefaultOnToggle):
+    """Forces Glasses to appear before 50% of Wander."""
+    display_name = "Logic: Buy Glasses"
 
 
 class ItemGlasses(DefaultOnToggle):
@@ -88,15 +55,55 @@ class ItemGlasses(DefaultOnToggle):
     display_name = "Items: Second Glasses"
 
 
+class LogicFightHeal(Range):
+    """Percent chance either Fight Monsters or Heal The Sick
+    will (be forced to) appear in Z1.
+    Without this the vast majority of seed's Z1s were like,
+    "Lots of short quests then 4 haggles and leave".
+    Felt a bit samey."""
+    display_name = "Logic: Fight/Heal in Z1"
+    range_start = 0
+    range_end = 100
+    default = 75
+
+
+class LogicFight(NamedRange):
+    """The randomizer knows how much mana you have access to (In Z1).
+    As the gold you get from Fight Monsters is variable,
+    it needs to know how much you want to grind it up.
+
+    "Goal Based" is (Z1 = 5, Z2+ = 9)"""
+    display_name = "Logic: Fight Monsters Segments"
+    range_start = 3
+    range_end = 9
+    default = "goal_based"
+    special_range_names = {
+        "goal_based": -1,
+    }
+    defaults = (5, 9, 9, 9)
+
+
+class LogicZ2Mana(Range):
+    """Minimum mana you can have going into Z2,
+    after checking all locations (in logic for the seed) in Z1."""
+    display_name = "Logic: Z2 Starting Mana"
+    range_start = 0
+    range_end = 20000
+    default = 5000
+
+
+class LogicManaReduction(DefaultOnToggle):
+    """Makes Actions that reduce Mana Cost a requirement for what they reduce.
+    It feels so bad to have PM being your block without Hermit
+    (Also includes Old Shortcut for Talk To Hermit)"""
+    display_name = "Logic: Mana Reduction Actions"
+
+
 class LocationProgress(DefaultOnToggle):
     """Adds locations to progress bars (around every 10%)
 
     Otherwise, there is only one location per progress bar,
-    for the first completion of its action.
-
-    Reduces the chance of a fill error.
-    Gives a warning if this is not enabled for a Z3+ goal.
-    """
+    for the first completion of its action."""
     display_name = "Locations: Progress Bars"
 
 
@@ -106,135 +113,120 @@ class ItemSearch(DefaultOnToggle):
     display_name = "Items: Lootable Search Items"
 
 
-class LocationSkill(NamedRange):
-    """Add an item at 1-10 then every 10 levels up to this value for:
-    Combat, Magic, Practical Magic, Dark Magic, Chronomancy and Pyromancy.
-
-    "default" is based on goal (Z1 = 30, Z2 = 100, Z3 = 200, Z4 = 300)
-    These are also what's in logic for each Zone.
-
-    Gives a warning if set 'too high' for the goal."""
+class LocationSkillToggle(DefaultOnToggle):
+    """Adds locations for skills based on the goal:
+    Combat, Magic, Practical Magic, Dark Magic, Chronomancy and Pyromancy:
+    (Z1 = 30, Z2 = 50, Z3 = 100, Z4 = 200)
+    Alchemy: (Z2 = 25, Z3 = 50, Z4 = 75)
+    Crafting: (Z3 = 25, Z4 = 50)"""
     display_name = "Locations: Skills"
+
+
+class LocationBuffToggle(DefaultOnToggle):
+    """Adds locations for buffs based on the goal:
+    Dark Ritual: (Z2 = 1, Z3 = 2, Z4 = 10)
+    Imbue Mind: (Z4 = 1)"""
+    display_name = "Locations: Buffs"
+
+
+class LocationSkill(NamedRange):
+    """Overwrite the max level for 'normal' skills.
+    (Combat, Magic, Practical Magic, Dark Magic, Chronomancy and Pyromancy)"""
+    display_name = "Locations: Skills Max Level"
     range_start = 0
     range_end = 500
     special_range_names = {
-        "default": -1,
+        "goal_based": -1,
     }
-    default = "default"
-    defaults = (30, 100, 200, 300)
+    default = "goal_based"
+    defaults = (30, 50, 100, 200)
 
 
 class LocationAlchemy(NamedRange):
-    """Add an item at 1-10 then every 5 levels up to this value for Alchemy.
-
-    "default" is based on goal (Z2 = 25, Z3 = 50, Z4 = 75)
-    These values are also what's in logic for each Zone."""
+    """Overwrite the max Alchemy level."""
     display_name = "Locations: Alchemy (Skill)"
     range_start = 0
     range_end = 100
     special_range_names = {
-        "default": -1,
+        "goal_based": -1,
     }
-    default = "default"
+    default = "goal_based"
     defaults = (0, 25, 50, 75)
 
 
 class LocationCrafting(NamedRange):
-    """Look, I straight up forgot how fast crafting is to level.
-    Or even that crafting existed as a skill.
-    How'd I miss it for previous apworld versions? I had the crafting guild!
-
-    Add an item at 1-10 then every 5 levels up to this value for Crafting.
-
-    "default" is based on goal (Z3 = 25, Z4 = 50)
-    These values are also what's in logic for each Zone."""
+    """Overwrite the max Crafting level."""
     display_name = "Locations: Crafting (Skill)"
     range_start = 0
     range_end = 100
     special_range_names = {
-        "default": -1,
+        "goal_based": -1,
     }
-    default = "default"
+    default = "goal_based"
     defaults = (0, 0, 25, 50)
 
 
+class LocationMultipartToggle(DefaultOnToggle):
+    """Adds locations for multipart actions based on the goal:
+    Heal The Sick: (Z1 = 5, Z2 = 6, Z3 = 7, Z4 = 15)
+    Fight Monsters: (Z1 = 3, Z2 = 4, Z3 = 5, Z4 = 10)
+    Small Dungeon: (Z1 = 3, Z2 = 4, Z3 = 6/max)
+    Large Dungeon: (Z3 = 2, Z4 = 9/max)
+    Trolls: (Z4 = 5)
+    The Guilds do not have locations on them."""
+    display_name = "Locations: Multipart Actions"
+
+
 class LocationHeal(NamedRange):
-    """How many patients to put items on.
-
-    "default" is based on goal (Z1 = 5, Z2 = 7, Z3 = 9, Z4 = 15)
-    These values are also what's in logic for each Zone.
-
-    Gives a warning if set 'too high' for the goal.
-
-    I should probably change these defaults after some playtesting.
-    I don't think they take into account doing multiple actions in one loop."""
+    """Overwrite how many patients to heal."""
     display_name = "Locations: Heal The Sick"
     range_start = 0
     range_end = 20
     special_range_names = {
-        "default": -1,
+        "goal_based": -1,
     }
-    default = "default"
-    defaults = (5, 7, 9, 15)
+    default = "goal_based"
+    defaults = (5, 6, 7, 15)
 
 
 class LocationFight(NamedRange):
-    """How many monsters to put items on.
-
-    "default" is based on goal (Z1 = 3, Z2 = 5, Z3 = 7, Z4 = 10)
-    These values are also what's in logic for each Zone.
-
-    Gives a warning if set 'too high' for the goal.
-
-    I should probably change these defaults after some playtesting.
-    I don't think they take into account doing multiple actions in one loop."""
+    """Overwrite how many monsters to fight."""
     display_name = "Locations: Fight Monsters"
     range_start = 0
     range_end = 15
     special_range_names = {
-        "default": -1,
+        "goal_based": -1,
     }
-    default = "default"
-    defaults = (3, 5, 7, 10)
+    default = "goal_based"
+    defaults = (3, 4, 5, 10)
 
 
 class LocationSmallDungeon(NamedRange):
-    """How many Small Dungeon floors to put items on.
-
-    "default" is based on goal (Z1 = 3, Z2 = 4, Z3 = 6/max)
-    These values are also what's in logic for each Zone.
-    """
+    """Overwrite how many Small Dungeon floors to clear."""
     display_name = "Locations: Small Dungeon"
     range_start = 0
     range_end = 6
     special_range_names = {
-        "default": -1,
+        "goal_based": -1,
     }
-    default = "default"
+    default = "goal_based"
     defaults = (3, 4, 6, 6)
 
 
 class LocationLargeDungeon(NamedRange):
-    """How many Large Dungeon floors to put items on.
-
-    "default" is based on goal (Z3 = 2, Z4 = 9/max)
-    These values are also what's in logic for each Zone.
-    """
+    """Overwrite how many Large Dungeon floors to clear."""
     display_name = "Locations: Large Dungeon"
     range_start = 0
     range_end = 9
     special_range_names = {
-        "default": -1,
+        "goal_based": -1,
     }
-    default = "default"
+    default = "goal_based"
     defaults = (0, 0, 2, 9)
 
 
 class LocationTrolls(Range):
-    """How many trolls to put items on.
-
-    No goal-dependent "default" this time,
-    as it's Z4 content and the highest goal is Z4. Watch this space."""
+    """Overwrite how many of Trolls to fight."""
     display_name = "Locations: Trolls"
     range_start = 0
     range_end = 10
@@ -242,87 +234,75 @@ class LocationTrolls(Range):
     defaults = (0, 0, 0, 5)
 
 
-class LocationRitual(Range):
-    """Max level of Dark Ritual to put items on.
-
-    1 is in logic for Z2, 2+ is Z4."""
+class LocationRitual(NamedRange):
+    """Overwrite how many Dark Rituals to perform."""
     display_name = "Locations: Dark Ritual"
     range_start = 0
     range_end = 10
-    default = 1
-    defaults = (0, 1, 1, 10)
+    special_range_names = {
+        "goal_based": -1,
+    }
+    default = "goal_based"
+    defaults = (0, 1, 2, 10)
 
 
 class LocationMind(Range):
-    """Max level of Imbue Mind to put items on.
-
-    I'm not up to Imbue Mind in my casual playthrough yet,
-    so I don't know what a reasonable default is."""
+    """Overwrite how many Imbues to Mind."""
     display_name = "Locations: Imbue Mind"
     range_start = 0
     range_end = 5
-    default = 5
-    defaults = (0, 0, 0, 5)
+    default = 1
+    defaults = (0, 0, 0, 1)
 
 
 class ItemShop(Toggle):
-    """Requires items to be found to unlock the shop actions below"""
+    """Requires items to be found to unlock the shop actions below.
+
+    With this on, you might not get the shop until after you can
+    already buy everything, kinda defeating the point."""
     display_name = "Items: AP Shop Unlock"
 
 
-class LocationZ1Shop(Range):
-    """Adds an action to Z1 to buy up to N items for gold."""
+class LocationZ1ShopCheap(DefaultOnToggle):
+    """Adds 10 buyable items to Z1, ranging from 50 to 200 gold."""
     display_name = "Locations: Z1 AP Shop"
-    range_start = 0
-    range_end = 20
-    default = 0
+    option_false = 0
+    option_true = 10
 
 
-class Z1ShopMin(Range):
-    """Minimum cost of items in Z1 AP Shop"""
-    display_name = "Z1 AP Shop: Min Cost"
-    range_start = 10
-    range_end = 100
-    default = 50
+class LocationZ1ShopExpensive(DefaultOnToggle):
+    """Adds extra, more expensive, items to the Z1 shop.
+    Min gold cost is 300,
+    Max gold cost is based on the goal:
+    (Z2 = 400, Z3 = 600, Z4 = 1000)
+    Affordable after you get PM."""
+    display_name = "Locations: Z1 AP Shop (Expensive)"
+    option_false = 0
+    option_true = 10
 
 
-class Z1ShopMax(Range):
-    """Maximum cost of items in Z1 AP Shop.
+class Z1ShopExpensiveMax(NamedRange):
+    """Maximum cost of items in Z1 AP Shop (Expensive)
+    1500 is affordable with 300 PM.
+    Set responsibly if you don't want to go that deep."""
+    display_name = "Z1 AP Shop (Expensive): Max Cost"
+    range_start = 300
+    range_end = 1500
+    default = "goal_based"
+    special_range_names = {
+        "goal_based": -1,
+    }
+    defaults = (0, 400, 600, 1000)
 
-    Throws an error if set above 200 gold for a Z1 goal.
-    For now that's a random guess at how much you can get in Z1.
-    I'll change it after playtesting."""
-    display_name = "Z1 AP Shop: Max Cost"
-    range_start = 50
-    range_end = 300
-    default = 300
 
-
-class LocationZ3Shop(Range):
-    """Adds an action to Z3 to buy up to N items for gold."""
+class LocationZ3Shop(DefaultOnToggle):
+    """Adds 10 buyable items to Z3, ranging from 500 to 1000 gold."""
     display_name = "Locations: Z3 AP Shop"
-    range_start = 0
-    range_end = 20
-    default = 0
+    option_false = 0
+    option_true = 10
 
 
-class Z3ShopMin(Range):
-    """Minimum cost of items in Z3 AP Shop"""
-    display_name = "Z3 AP Shop: Min Cost"
-    range_start = 100
-    range_end = 1000
-    default = 500
-
-
-class Z3ShopMax(Range):
-    """Maximum cost of items in Z3 AP Shop"""
-    display_name = "Z3 AP Shop: Max Cost"
-    range_start = 500
-    range_end = 2000
-    default = 1000
-
-
-class BatchZ2(Toggle):
+class BatchZ2(DefaultOnToggle):
     """Batches Herbs/Wild Mana locations and items 10x.
 
     Herbs/Wild Mana basically give you 300 checks the moment
@@ -332,13 +312,14 @@ class BatchZ2(Toggle):
     are just lying on the forest floor, and also reducing total 'filler'.
     """
     display_name = "Batch Herbs/Wild Mana 10x"
-    visibility = Visibility.none
 
 
 class ItemPots(DefaultOnToggle):
     """Removes the 50 "Z1 - Mana Pot" items from Vanilla from the randomiser.
-    This won't make your average """
+    Makes your ratio of Mana Pots/Starting Gold/Mana nice and even."""
     display_name = "Filler Item: Remove Vanilla 50 Mana Pots"
+    option_false = 50
+    option_true = 0
 
 
 class FillerStartingMana(DefaultOnToggle):
@@ -376,43 +357,49 @@ class FillerProgressiveLootable(Range):
     default = 20
 
 
-class FillerGameSpeed(Range):
-    """Adds +0.1 Game Speed items to the pool, to a total of (value)x.
-    Multiplicative with Starting Game Speed below.
-
-    The game slows down over time so some of this can help it feel more even."""
-    display_name = "Item: Game Speed (total)"
-    range_start = 1
-    range_end = 10
-    default = 2
-
-
-class FillerExpMult(Range):
-    """Adds +0.1 Exp Multiplier items to the pool, to a total of (value)x.
-    Multiplicative with Starting Exp Mult below."""
-    display_name = "Item: Exp Mult (total)"
-    range_start = 1
-    range_end = 10
-    default = 5
-
-
-class GameSpeed(Range):
-    """Multiplicative with Filler Game Speed above."""
+class GameSpeed(NamedRange):
+    """Multiplicative with the option below.
+    "Goal Based" is (Z1 = 2, Z2 = 2, Z3 = 3, Z4 = 3)"""
     display_name = "Global Game Speed"
     range_start = 1
     range_end = 10
-    default = 2
+    default = "goal_based"
+    special_range_names = {
+        "goal_based": -1,
+    }
+    defaults = (2, 2, 3, 3)
+
+
+class FillerGameSpeed(NamedRange):
+    """Adds +0.1 Game Speed items to the pool, to a total of (value)x.
+    Multiplicative with the option above.
+    The game slows down over time so this helps it feel more even.
+    "Goal Based" is (Z1 = 2, Z2 = 2, Z3 = 3, Z4 = 3)"""
+    display_name = "Item: Filler Game Speed"
+    range_start = 1
+    range_end = 10
+    default = "goal_based"
+    special_range_names = {
+        "goal_based": -1,
+    }
+    defaults = (2, 2, 3, 3)
 
 
 class StatExpMult(Range):
-    """Multiplicative with Filler Exp Mult above.
-
-    I think the filler version of this feels better,
-    but no reason not to have this option."""
+    """Multiplicative with the option below."""
     display_name = "Global Stat Exp Mult"
     range_start = 1
     range_end = 10
     default = 1
+
+
+class FillerExpMult(Range):
+    """Adds +0.1 Exp Multiplier items to the pool, to a total of (value)x.
+    Multiplicative with the option above."""
+    display_name = "Item: Filler Exp Mult"
+    range_start = 1
+    range_end = 10
+    default = 5
 
 
 class SkillExpMult(Range):
@@ -459,21 +446,45 @@ class ModUICrime(DefaultOnToggle):
     display_name = "Mod: Fix Vanilla UI Crimes"
 
 
+option_groups = [
+    OptionGroup("Advanced", [
+        LogicFight,
+        LogicZ2Mana,
+        LocationSkill,
+        LocationAlchemy,
+        LocationCrafting,
+        LocationHeal,
+        LocationFight,
+        LocationSmallDungeon,
+        LocationRitual,
+        LocationLargeDungeon,
+        Z1ShopExpensiveMax,
+        LocationTrolls,
+        LocationMind,
+        LogicVanillaAll,
+    ])
+]
+
+
 @dataclass
 class IdleLoopsOptions(DeathLinkMixin, PerGameCommonOptions):
     goal: Goal
-    logic_big_sphere1: LogicBigSphere1
     logic_vanilla: LogicVanilla
     logic_vanilla_all: LogicVanillaAll
     logic_mana_reduction: LogicManaReduction
     logic_fight: LogicFight
     logic_glasses: LogicGlasses
     item_glasses: ItemGlasses
+    logic_z2_mana: LogicZ2Mana
+    logic_fight_heal: LogicFightHeal
     location_progress: LocationProgress
     item_search: ItemSearch
+    location_skill_toggle: LocationSkillToggle
+    location_buff_toggle: LocationBuffToggle
     location_skill: LocationSkill
     location_alchemy: LocationAlchemy
     location_crafting: LocationCrafting
+    location_multipart_toggle: LocationMultipartToggle
     location_heal: LocationHeal
     location_fight: LocationFight
     location_sd: LocationSmallDungeon
@@ -482,22 +493,21 @@ class IdleLoopsOptions(DeathLinkMixin, PerGameCommonOptions):
     location_trolls: LocationTrolls
     location_mind: LocationMind
     item_shop: ItemShop
-    location_z1_shop: LocationZ1Shop
-    z1_shop_min: Z1ShopMin
-    z1_shop_max: Z1ShopMax
+    location_z1_shop: LocationZ1ShopCheap
+    location_z1_shop_expensive: LocationZ1ShopExpensive
+    z1_shop_expensive_max: Z1ShopExpensiveMax
     location_z3_shop: LocationZ3Shop
-    z3_shop_min: Z3ShopMin
-    z3_shop_max: Z3ShopMax
     batch_z2: BatchZ2
+    item_pots: ItemPots
     filler_starting_mana: FillerStartingMana
     filler_starting_gold: FillerStartingGold
     filler_extra_mana_pot: FillerExtraManaPot
     filler_nothing: FillerNothing
     filler_progressive_lootable: FillerProgressiveLootable
-    filler_game_speed: FillerGameSpeed
-    filler_exp_mult: FillerExpMult
     game_speed: GameSpeed
+    filler_game_speed: FillerGameSpeed
     stat_exp_mult: StatExpMult
+    filler_exp_mult: FillerExpMult
     skill_exp_mult: SkillExpMult
     bonus: Bonus
     # soul_link: SoulLink

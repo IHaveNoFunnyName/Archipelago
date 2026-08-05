@@ -3,12 +3,11 @@ from functools import reduce
 from Options import OptionError
 from logging import warning
 
-from rule_builder.cached_world import CachedRuleBuilderWorld
 
-from .Options import IdleLoopsOptions, Goal
-from .Actions import all_actions, all_locations, all_items, location_name_to_id, item_to_id, IdleLoopsItem
+from .Options import IdleLoopsOptions, option_groups
+from .Actions import IdleLoopsLocation, all_actions, all_items, location_name_to_id, item_to_id, IdleLoopsItem
 from typing import Dict, Any, List
-from BaseClasses import Region, Item, Tutorial
+from BaseClasses import ItemClassification, MultiWorld, Region, Item, Tutorial
 from worlds.AutoWorld import World, WebWorld
 from rule_builder.rules import True_
 
@@ -29,6 +28,7 @@ class IdleLoopsWeb(WebWorld):
     )
 
     tutorials = [guide_en]
+    option_groups = option_groups
 
     bug_report_page = "https://github.com/Neffy/IdleLoops_Archipelago/issues"
 
@@ -52,26 +52,40 @@ class IdleLoopsWorld(World):
     item_name_to_id = item_to_id
     location_name_to_id = location_name_to_id
 
-    def check_options(self) -> None:
-        if self.options.goal >= 2 and not (self.options.location_progress and self.options.logic_big_sphere1):
-            error_during_fuzz(f"Idle Loops Player {self.player_name} Warning: Goals beyond Z2 are known to need \"Locations: Progress Bars\" and \"Logic: Force Early Meet People/Investigate\" to generate consistently.")
+    def handle_options(self) -> None:
+        if self.options.item_search and not self.options.location_progress:
+            error_during_fuzz(f"Idle Loops Player {self.player_name} Recommendation: \"Items: Search\" is intended to break up the Progress Bar and Lootable rewards for each Progress action, without \"Locations: Progress Bars\" it doesn't need to do this and so can be disabled.")
         if self.options.logic_vanilla_all:
             error_during_fuzz(f"Idle Loops Player {self.player_name} Warning: \"Logic: Vanilla Requirements All\" causes generation problems.")
-        if self.options.goal == 0 and self.options.z1_shop_max > 200:
-            raise OptionError(f"Idle Loops Player {self.player_name} Warning: \"Locations: Z1 Shop Max\" requires more gold than is availible in Z1")
         if self.options.goal < 3 and self.options.location_skill > IdleLoopsOptions.__annotations__["location_skill"].defaults[self.options.goal + 1]:
             warning(f"Idle Loops Player {self.player_name} Warning: \"Locations: Skill\" set above what is reasonable for a Z{self.options.goal + 1} goal.")
         if self.options.goal < 3 and self.options.location_fight > IdleLoopsOptions.__annotations__["location_fight"].defaults[self.options.goal + 1]:
             warning(f"Idle Loops Player {self.player_name} Warning: \"Locations: Fight\" set above what is reasonable for a Z{self.options.goal + 1} goal.")
         if self.options.goal < 3 and self.options.location_heal > IdleLoopsOptions.__annotations__["location_heal"].defaults[self.options.goal + 1]:
             warning(f"Idle Loops Player {self.player_name} Warning: \"Locations: Heal\" set above what is reasonable for a Z{self.options.goal + 1} goal.")
+        if self.options.goal == 0 and self.options.logic_z2_mana > 0:
+            warning(f"Idle Loops Player {self.player_name} Notice: \"Logic: Z2 Starting Mana\" is above 0 for a Z1 goal. Ignoring it.")
+            self.options.logic_z2_mana.value = 0
+
+        # Set defaults for -1 options
+        for option in self.options.__annotations__:
+            option_value = getattr(self.options, option)
+            if option_value.value == -1:
+                option_value.value = self.options.__annotations__[option].defaults[self.options.goal]
+
+        # x10 the option - option is Nx total mult, items are +0.1x
+        for option in ['filler_game_speed', 'filler_exp_mult']:
+            option_value = getattr(self.options, option)
+            option_value.value = option_value.value * 10
+
+        self.options.logic_fight_heal.value = 1 if self.multiworld.random.randint(0, 99) < self.options.logic_fight_heal.value else 0
 
     def generate_early(self) -> None:
 
         if self.options.logic_vanilla_all:
             self.options.logic_vanilla.value = 1
 
-        self.check_options()
+        self.handle_options()
         self.goal = "Z" + str(self.options.goal + 1)
         self.rules = {}
         self.used_regions = {
@@ -107,11 +121,6 @@ class IdleLoopsWorld(World):
                             self.used_regions[region + "_" + new_region_name] = []
                             self.used_regions[region].append((region + "_" + new_region_name, region_data["rule"]))
 
-        for option in self.options.__annotations__:
-            option_value = getattr(self.options, option)
-            if option_value.value == -1:
-                option_value.value = self.options.__annotations__[option].defaults[self.options.goal]
-
         # This might not need to exist, it just did on the apworld i based this off.
         self.all_items = [item.copy() for item in all_items]
 
@@ -124,17 +133,15 @@ class IdleLoopsWorld(World):
                 self.multiworld.push_precollected(self.create_item(f"{action} - Search"))
 
         if not self.options.item_shop:
-            if self.options.location_z1_shop > 0:
+            if self.options.location_z1_shop or self.options.location_z1_shop_expensive:
                 self.multiworld.push_precollected(self.create_item("Z1 - AP Shop"))
-            if self.options.location_z3_shop > 0:
+            if self.options.location_z3_shop:
                 self.multiworld.push_precollected(self.create_item("Z3 - AP Shop"))
 
         self.multiworld.local_early_items[self.player]["Z1 - Buy Mana"] = 1
-        if self.options.logic_big_sphere1:
-            self.multiworld.early_items[self.player]["Z1 - Meet People"] = 1
-            self.multiworld.early_items[self.player]["Z1 - Investigate"] = 1
+
         # Help the rando a bit, Meet People is the only item that gets you anything else in Z1.
-        if self.options.logic_vanilla > 1:
+        if self.options.logic_vanilla_all:
             self.multiworld.early_items[self.player]["Z1 - Meet People"] = 1
             self.multiworld.early_items[self.player]["Z1 - Mana Pot"] = 8
 
@@ -188,6 +195,17 @@ class IdleLoopsWorld(World):
             new_item = self.create_item(name)
             self.multiworld.itempool.append(new_item)
 
+    # Stolen and modified from https://github.com/Mysteryem/Archipelago-TCS/blob/v1.4.4/lego_star_wars_tcs/__init__.py#L743-L781
+    # (Actually I lied I stole the implimentation from sa2b after searching the code base for stage_fill_hook)
+    # Found on Discord
+    # Sort the Item Pool so the randomiser places progression items before fillers
+    # ... At least that's what I thought, but according to the github link above, this would make it put filler items first.
+    # But this way literally halves fill errors and the other doesn't, so, shrug? The lego star wars one is wrong?
+    @classmethod
+    def stage_fill_hook(cls, multiworld: MultiWorld, progitempool: list[Item], usefulitempool, filleritempool, fill_locations) -> None:
+        if multiworld.get_game_players(cls.game):
+            progitempool.sort(key=lambda item: 1 if item.game == cls.game and item.classification in (ItemClassification.progression_deprioritized, ItemClassification.progression_deprioritized_skip_balancing) else 0)
+
     def create_regions(self) -> None:
         regions = {}
         for region_name in self.used_regions:
@@ -221,12 +239,9 @@ class IdleLoopsWorld(World):
     def fill_slot_data(self) -> Dict[str, Any]:
         return self.options.as_dict(
             "goal",
-            "location_z1_shop",
-            "z1_shop_min",
-            "z1_shop_max",
-            "location_z3_shop",
-            "z3_shop_min",
-            "z3_shop_max",
+            "logic_vanilla",
+            "logic_vanilla_all",
+            "z1_shop_expensive_max",
             "game_speed",
             "stat_exp_mult",
             "skill_exp_mult",

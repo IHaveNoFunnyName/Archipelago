@@ -5,18 +5,18 @@ from typing import Any, Optional, TypedDict, override
 from BaseClasses import CollectionState
 from rule_builder.options import Operator, OptionFilter
 from rule_builder.rules import Has, HasFromList, Rule, True_
-from .Options import Goal, LogicVanilla, LogicManaReduction, LogicGlasses, IdleLoopsOptions, LogicVanillaAll
+from .Options import Goal, LogicFightHeal, LogicVanilla, LogicManaReduction, LogicGlasses, IdleLoopsOptions, LogicVanillaAll
 
 
 def HasIfOptionManaReduction(action: str | Rule) -> Rule:
     return (Has(action) if isinstance(action, str) else action) | OptionFilter(LogicManaReduction, 0)
 
 
-def HasIfOptionVanillaEasy(action: str | Rule) -> Rule:
+def HasIfOptionVanillaSkills(action: str | Rule) -> Rule:
     return (Has(action) if isinstance(action, str) else action) | OptionFilter(LogicVanilla, 1, operator="lt")
 
 
-def HasIfOptionVanillaHard(action: str | Rule) -> Rule:
+def HasIfOptionVanillaAll(action: str | Rule) -> Rule:
     return (Has(action) if isinstance(action, str) else action) | OptionFilter(LogicVanillaAll, 0)
 
 
@@ -132,7 +132,7 @@ def has_mana_from_state(mana_goal: int, rep_goal: int, fight_segments: int, stat
         if mana > mana_goal:
             return True
 
-    if state.has("Z1 - Fight Monsters", player) and state.has("Z1 - Warrior Training", player) and rep >= 2:
+    if state.has("Z1 - Fight Monsters", player) and state.has("Z1 - Warrior Lessons", player) and rep >= 2:
         if mana > 2100:
             mana += (fight_segments * 20 * 50) - 2100
 
@@ -169,9 +169,10 @@ class HasMana(Rule["IdleLoopsWorld"], game="Idle Loops"):
 class JourneyRule(Rule["IdleLoopsWorld"], game="Idle Loops"):
     @override
     def _instantiate(self, world: "IdleLoopsWorld") -> Rule.Resolved:
-        return self.Resolved(player=world.player, fight_segments=int(world.options.logic_fight), caching_enabled=False)
+        return self.Resolved(player=world.player, extra_mana=int(world.options.logic_z2_mana), fight_segments=int(world.options.logic_fight), caching_enabled=False)
 
     class Resolved(Rule.Resolved):
+        extra_mana: int
         fight_segments: int
 
         @override
@@ -204,7 +205,7 @@ class JourneyRule(Rule["IdleLoopsWorld"], game="Idle Loops"):
 
             # Buy Supplies + Start Journey + 15 haggles + extra mana (Well, mana in it's unbought gold form) for each haggle under 15
             # I want to do this but clearly it won't work as it's not passed world or player or state
-            return has_mana_from_state(1200 + 1500 + ((15 - haggles) * 900), 0, self.fight_segments, state, self.player)
+            return has_mana_from_state(1200 + 1500 + ((15 - haggles) * 900) + self.extra_mana, 0, self.fight_segments, state, self.player)
 
         @override
         def item_dependencies(self) -> dict[str, set[int]]:
@@ -223,13 +224,13 @@ rules = {}
 rules["Z1 - Meet People"] = Has("Z1 - Meet People") & HasMana(800)
 # You'd expect the Vanilla Hard rule to need "Meet People Progress" instead, but the difference between them is the addition of Throw Party
 # Which is locked behind Meet People already via Investigate, so it would cause an infinite loop.
-rules["Z1 - Investigate"] = Has("Z1 - Investigate") & HasMana(1000) & HasIfOptionVanillaHard(rules["Z1 - Meet People"])
-rules["Z1 - Throw Party"] = Has("Z1 - Throw Party") & HasMana(1600, 2) & HasIfOptionVanillaHard(rules["Z1 - Investigate"])
+rules["Z1 - Investigate"] = Has("Z1 - Investigate") & HasMana(1000) & HasIfOptionVanillaAll(rules["Z1 - Meet People"])
+rules["Z1 - Throw Party"] = Has("Z1 - Throw Party") & HasMana(1600, 2) & HasIfOptionVanillaAll(rules["Z1 - Investigate"])
 # Extra rule because Throw Party also gives progress to everything Meet People does.
 rules["Meet People Progress"] = rules["Z1 - Meet People"] | rules["Z1 - Throw Party"]
 # The training actions themselves take 1k, but you need enough to do long quests.
-rules["Z1 Has Combat"] = Has("Z1 - Warrior Lessons") & HasMana(1600, 2) & HasIfOptionVanillaHard(rules["Z1 - Investigate"])
-rules["Z1 Has Magic"] = Has("Z1 - Mage Lessons") & HasMana(1600, 2) & HasIfOptionVanillaHard(rules["Z1 - Investigate"])
+rules["Z1 Has Combat"] = Has("Z1 - Warrior Lessons") & HasMana(1600, 2) & HasIfOptionVanillaAll(rules["Z1 - Investigate"])
+rules["Z1 Has Magic"] = Has("Z1 - Mage Lessons") & HasMana(1600, 2) & HasIfOptionVanillaAll(rules["Z1 - Investigate"])
 
 rules["Option Has Glasses"] = Has("Z1 - Buy Glasses", options=[OptionFilter(LogicGlasses, 1)], filtered_resolution=True)
 
@@ -237,23 +238,24 @@ rules["Option Has Glasses"] = Has("Z1 - Buy Glasses", options=[OptionFilter(Logi
 rules["Has Combat"] = Has("Z1 - Warrior Lessons")
 rules["Has Magic"] = Has("Z1 - Mage Lessons")
 
-rules["Z2 - Old Shortcut"] = Has("Z2 - Old Shortcut") & HasIfOptionVanillaHard("Z2 - Explore Forest")
-rules["Z2 - Talk To Hermit"] = Has("Z2 - Talk To Hermit") & HasIfOptionManaReduction(rules["Z2 - Old Shortcut"]) & HasIfOptionVanillaEasy(rules["Has Magic"]) & HasIfOptionVanillaHard(rules["Z2 - Old Shortcut"])
-rules["Z2 - Follow Flowers"] = Has("Z2 - Follow Flowers") & HasIfOptionVanillaHard("Z2 - Explore Forest")
-rules["Z2 - Clear Thicket"] = Has("Z2 - Clear Thicket") & HasIfOptionVanillaHard("Z2 - Follow Flowers")
-rules["Z2 - Talk To Witch"] = Has("Z2 - Talk To Witch") & HasIfOptionVanillaEasy(rules["Has Magic"]) & HasIfOptionVanillaHard(rules["Z2 - Clear Thicket"])
-rules["Has Alchemy"] = Has("Z2 - Learn Alchemy") & HasIfOptionManaReduction(rules["Z2 - Talk To Hermit"]) & HasIfOptionVanillaEasy(rules["Has Magic"]) & HasIfOptionVanillaHard(rules["Z2 - Talk To Hermit"])
-rules["Has Dark Magic"] = Has("Z2 - Dark Magic") & Has("Z1 - Haggle") & HasIfOptionManaReduction(rules["Z2 - Talk To Witch"]) & HasIfOptionVanillaEasy(rules["Has Magic"]) & HasIfOptionVanillaHard(rules["Z2 - Talk To Witch"])
+rules["Z2 - Old Shortcut"] = Has("Z2 - Old Shortcut") & HasIfOptionVanillaAll("Z2 - Explore Forest")
+rules["Z2 - Talk To Hermit"] = Has("Z2 - Talk To Hermit") & HasIfOptionManaReduction(rules["Z2 - Old Shortcut"]) & HasIfOptionVanillaSkills(rules["Has Magic"]) & HasIfOptionVanillaAll(rules["Z2 - Old Shortcut"])
+rules["Z2 - Follow Flowers"] = Has("Z2 - Follow Flowers") & HasIfOptionVanillaAll("Z2 - Explore Forest")
+rules["Z2 - Clear Thicket"] = Has("Z2 - Clear Thicket") & HasIfOptionVanillaAll("Z2 - Follow Flowers")
+rules["Z2 - Talk To Witch"] = Has("Z2 - Talk To Witch") & HasIfOptionVanillaSkills(rules["Has Magic"]) & HasIfOptionVanillaAll(rules["Z2 - Clear Thicket"])
+rules["Has Alchemy"] = Has("Z2 - Learn Alchemy") & HasIfOptionManaReduction(rules["Z2 - Talk To Hermit"]) & HasIfOptionVanillaSkills(rules["Has Magic"]) & HasIfOptionVanillaAll(rules["Z2 - Talk To Hermit"])
+rules["Has Practical Magic"] = Has("Z2 - Practical Magic") & HasIfOptionManaReduction(rules["Z2 - Talk To Hermit"]) & HasIfOptionVanillaSkills(rules["Has Magic"]) & HasIfOptionVanillaAll(rules["Z2 - Talk To Hermit"])
+rules["Has Dark Magic"] = Has("Z2 - Dark Magic") & Has("Z1 - Haggle") & HasIfOptionManaReduction(rules["Z2 - Talk To Witch"]) & HasIfOptionVanillaSkills(rules["Has Magic"]) & HasIfOptionVanillaAll(rules["Z2 - Talk To Witch"])
 
-rules["Z3 - Get Drunk"] = Has("Z3 - Get Drunk") & HasIfOptionVanillaHard("Z3 - Explore City")
-rules["Z3 - Large Dungeon"] = Has("Z3 - Large Dungeon") & Has("Z3 - Adventure Guild") & Has("Z3 - Gather Team") & rules["Has Combat"] & rules["Has Magic"] & HasIfOptionVanillaHard(rules["Z3 - Get Drunk"])
-rules["Z3 - Apprentice"] = Has("Z3 - Apprentice") & Has("Z3 - Crafting Guild") & HasIfOptionVanillaHard(rules["Z3 - Get Drunk"])
-rules["Z3 - Mason"] = Has("Z3 - Mason") & Has("Z3 - Crafting Guild") & HasIfOptionVanillaHard(rules["Z3 - Apprentice"])
-rules["Z3 - Architect"] = Has("Z3 - Architect") & Has("Z3 - Crafting Guild") & HasIfOptionVanillaHard(rules["Z3 - Mason"])
+rules["Z3 - Get Drunk"] = Has("Z3 - Get Drunk") & HasIfOptionVanillaAll("Z3 - Explore City")
+rules["Z3 - Large Dungeon"] = Has("Z3 - Large Dungeon") & Has("Z3 - Adventure Guild") & Has("Z3 - Gather Team") & rules["Has Combat"] & rules["Has Magic"] & HasIfOptionVanillaAll(rules["Z3 - Get Drunk"])
+rules["Z3 - Apprentice"] = Has("Z3 - Apprentice") & Has("Z3 - Crafting Guild") & HasIfOptionVanillaAll(rules["Z3 - Get Drunk"])
+rules["Z3 - Mason"] = Has("Z3 - Mason") & Has("Z3 - Crafting Guild") & HasIfOptionVanillaAll(rules["Z3 - Apprentice"])
+rules["Z3 - Architect"] = Has("Z3 - Architect") & Has("Z3 - Crafting Guild") & HasIfOptionVanillaAll(rules["Z3 - Mason"])
 
-rules["Z4 - Decipher Runes"] = Has("Z4 - Decipher Runes") & HasIfOptionVanillaHard("Z4 - Climb Mountain")
-rules["Z4 - Explore Cavern"] = Has("Z4 - Explore Cavern") & HasIfOptionVanillaHard("Z4 - Climb Mountain")
-rules["Z4 - Check Walls"] = Has("Z4 - Check Walls") & HasIfOptionVanillaHard(rules["Z4 - Explore Cavern"])
+rules["Z4 - Decipher Runes"] = Has("Z4 - Decipher Runes") & HasIfOptionVanillaAll("Z4 - Climb Mountain")
+rules["Z4 - Explore Cavern"] = Has("Z4 - Explore Cavern") & HasIfOptionVanillaAll("Z4 - Climb Mountain")
+rules["Z4 - Check Walls"] = Has("Z4 - Check Walls") & HasIfOptionVanillaAll(rules["Z4 - Explore Cavern"])
 
 rules["Has Soulstones"] = (
     (Has("Z1 - Small Dungeon") & (rules["Has Magic"] | rules["Has Combat"])) |
@@ -261,4 +263,4 @@ rules["Has Soulstones"] = (
     (Has("Z2 - Continue On") & Has("Z3 - Start Trek") & Has("Z3 - Buy Pickaxe") & (Has("Z4 - Soulstone") & rules["Z4 - Explore Cavern"]))
 )
 
-rules["Has Pyromancy"] = OptionFilter(Goal, 4, "lt") | Has("Z4 - Pyromancy") & HasIfOptionManaReduction(rules["Z4 - Decipher Runes"]) & HasIfOptionVanillaEasy(rules["Has Magic"]) & HasIfOptionVanillaHard(rules["Z4 - Decipher Runes"])
+rules["Has Pyromancy"] = OptionFilter(Goal, 4, "lt") | Has("Z4 - Pyromancy") & HasIfOptionManaReduction(rules["Z4 - Decipher Runes"]) & HasIfOptionVanillaSkills(rules["Has Magic"]) & HasIfOptionVanillaAll(rules["Z4 - Decipher Runes"])
