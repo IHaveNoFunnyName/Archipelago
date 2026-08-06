@@ -6,7 +6,7 @@ from typing import Dict, List, Literal, NamedTuple, Optional, TypedDict, Tuple
 from bisect import bisect_left
 
 from BaseClasses import ItemClassification, Location, Item
-from rule_builder.rules import Has, HasFromList, True_, Rule
+from rule_builder.rules import Has, HasAll, HasFromList, True_, Rule
 
 from .Options import IdleLoopsOptions, LocationProgress
 from .Rules import HasIfOptionManaReduction, IfOption, rules, HasIfOptionVanillaSkills, HasIfOptionVanillaAll, HasMana, JourneyRule
@@ -251,7 +251,12 @@ class Limited(LimitedLocations, Region):
         return f"{self.zone} - {self.name} - Search"
 
     def extra_items(self, options: IdleLoopsOptions = None) -> List[str]:
-        count = getattr(options, "item_" + self.option) if self.option and options is not None else self.items
+        # Bit unintuitive but at the time of writing the only is a toggle that removes the pots when true.
+        option_value = getattr(options, "item_" + self.option) if self.option and options is not None else None
+        if option_value:
+            count = 0
+        else:
+            count = self.items
         return [{
             "name": f"{self.zone} - {self.name}",
             "classification": self.lootable_classification,
@@ -300,9 +305,20 @@ class Batched(Limited):
 
     def included_locations(self, options: IdleLoopsOptions) -> List[Tuple[int, int]]:
         if options.batch_z2:
-            return [(name, self.name) for name in self.batched_location_list()]
+            output = []
+            for i, name in enumerate(self.batched_location_list(), 1):
+                if hasattr(self, "add_rules"):
+                    region = ""
+                    for add_rule in self.add_rules:
+                        if i * self.batch_size >= add_rule.at:
+                            region = "_" + add_rule.name
+                            break
+                    output.append((name, self.name + region))
+                else:
+                    output.append((name, self.name))
+            return output
         else:
-            return [(name, self.name) for name in super().location_list()]
+            return super().included_locations(options)
 
     def batched_items(self) -> List[str]:
         return [{
@@ -342,6 +358,8 @@ class Shop(LimitedLocations):
 
     def included_locations(self, options: IdleLoopsOptions) -> List[Tuple[int, int]]:
         # Sort into regions based on reasonable value of PM, manually gathered
+        if not getattr(options, "location_" + self.option):
+            return []
         min_ = self.min
         if min_ <= 99:
             return [(f"{self.zone} - {self.name} - #{i}", self.region) for i in range(1, 11)]
@@ -359,6 +377,15 @@ class Shop(LimitedLocations):
                 region = int(self.region[-1])
             output.append((f"{self.zone} - {self.name} - #{i}", "Z" + str(region)))
         return output
+
+    def included_items(self, options: IdleLoopsOptions) -> List[int]:
+        return [
+            {
+                "name": f"{self.zone} - {self.name}",
+                "classification": self.classification,
+                "count": 1
+            }
+        ] if options.item_shop and getattr(options, "location_" + self.option) else []
 
     def rules(self, options: IdleLoopsOptions) -> Dict[str, callable]:
         # No mana logic after Z1
@@ -473,7 +500,7 @@ class Skill(Region):
         self.internal_action_name = internal_action_name if internal_action_name is not None else self.action_name
         self.option = option
         self.option_toggle = "location_skill_toggle"
-        self.location_numbers = ([1, 2, 3, 4, 5, 6, 7, 8, 9, 10] if every > 1 else []) + list(range(10 + every, IdleLoopsOptionsClass.__annotations__["location_" + self.option].range_end + 1, every))
+        self.location_numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] + list(range(10 + every, IdleLoopsOptionsClass.__annotations__["location_" + self.option].range_end + 1, every))
 
     def unlock_item_name(self) -> str:
         return f"{self.zone} - {self.action_name}"
@@ -507,6 +534,20 @@ class Buff(Skill):
         self.option_toggle = "location_buff_toggle"
 
 
+class Extra():
+    def __init__(self, option: str = None, **kwargs):
+        super().__init__(**kwargs)
+        self.option = option
+
+    def included_items(self, options: IdleLoopsOptions = None) -> List[str]:
+        count = 2 if getattr(options, self.option) else 1
+        return [{
+            "name": self.unlock_item_name(),
+            "classification": self.classification,
+            "count": count
+        }]
+
+
 class Filler():
     """Mixin for filler items, they don't have any locations.
 
@@ -524,10 +565,13 @@ class Filler():
     def location_list(self) -> List[str]:
         return []
 
+    def unlock_item_name(self) -> str:
+        return f"{self.name}"
+
     def included_items(self, options: IdleLoopsOptions = None) -> List[str]:
-        count = getattr(options, "filler_" + self.option) if self.option else 0
+        count = getattr(options, self.option) if self.option else 0
         return [{
-            "name": f"{self.zone} - {self.name}",
+            "name": self.name,
             "classification": self.classification,
             "count": count
         }]
@@ -540,8 +584,6 @@ class Z2():
     """Puts locations into the Z2 region, requiring the rule put on the region and excluding it from games with an earlier goal."""
 
     def __init__(self, **kwargs):
-        if "classification" not in kwargs:
-            kwargs["classification"] = ItemClassification.progression_skip_balancing
         super().__init__(**kwargs)
         self.region = "Z2"
 
@@ -568,14 +610,14 @@ class Z4():
 
 # ofc filler actions are only items but calling it actions makes it fit with the others
 filler_actions = [
-    Action(Filler)(name="50 Starting Mana", classification=ItemClassification.progression_deprioritized_skip_balancing),
-    Action(Filler)(name="1 Starting Gold", classification=ItemClassification.progression_deprioritized_skip_balancing),
+    Action(Filler)(name="Filler - 50 Starting Mana", classification=ItemClassification.progression_deprioritized_skip_balancing),
+    Action(Filler)(name="Filler - 1 Starting Gold", classification=ItemClassification.progression_deprioritized_skip_balancing),
     # Progressive lootable acts as an extra count for limited actions, (up to their usual max, for when you don't have them capped) in rough order of usefullness/progression
     # Long Quests (up to 2) > Short Quests > Long Quests (Rest) > Locks > Wild Mana ... > n-1 > Mana Pot
-    Action(Filler)(name="Progressive Lootable", option="progressive_lootable", classification=ItemClassification.progression),
-    Action(Filler)(name="+0.1 Game Speed", option="game_speed"),
-    Action(Filler)(name="+0.1 Exp Multiplier", option="exp_mult"),
-    Action(Filler)(name="Nothing"),
+    Action(Filler)(name="Progressive Lootable", option="item_progressive_lootable", classification=ItemClassification.progression),
+    Action(Filler)(name="+0.1 Game Speed", option="item_game_speed", classification=ItemClassification.useful),
+    Action(Filler)(name="+0.1 Exp Multiplier", option="item_exp_mult", classification=ItemClassification.useful),
+    Action(Filler)(name="Filler - Nothing"),
 ]
 
 # ZX Class means that action should be included if the goal is >=n, the zone arg only used for the name/display
@@ -591,8 +633,8 @@ all_actions: List[_Action] = [
     Action(Start, Progress, AddRule)(zone="Z1", name="Wander", add_rules=AddRuleTuple("glasses", 9, rules["Option Has Glasses"])),
     Action(Start, Limited, AddRule) (zone="Z1", name="Mana Pot", internal_name="Pots", count=50, option="pots", lootable_classification=ItemClassification.progression_deprioritized_skip_balancing, add_rules=AddRuleTuple("glasses", 26, rules["Option Has Glasses"])),
     Action(Limited, AddRule)        (zone="Z1", name="Lock", internal_name="Locks", count=10, lootable_classification=ItemClassification.progression_deprioritized_skip_balancing, add_rules=AddRuleTuple("glasses", 6, rules["Option Has Glasses"])),
-    Action()                        (zone="Z1", name="Buy Glasses", internal_name="BuyGlasses",
-                                     rule=HasFromList("Z1 - Lock", "Z1 - Short Quest", "Z1 - Long Quest", "Filler - Progressive Lootable", count=1) | Has("Filler - 1 Starting Gold", 10)
+    Action(Extra)                   (zone="Z1", name="Buy Glasses", internal_name="BuyGlasses", option="item_glasses",
+                                     rule=HasFromList("Z1 - Lock", "Z1 - Short Quest", "Z1 - Long Quest", "Progressive Lootable", count=1) | Has("Filler - 1 Starting Gold", 10)
                                      ),
     Action()                        (zone="Z1", name="Buy Mana", internal_name="BuyMana"),
     Action(Progress)                (zone="Z1", name="Meet People", internal_name="Met", full_rule=IfOption({"option": LocationProgress}, rules["Meet People Progress"], rules["Z1 - Meet People"])),
@@ -605,10 +647,10 @@ all_actions: List[_Action] = [
     # Just removed the check for Z1 - Start Journey and let the default & in rules() handle it
 
     Action()                        (zone="Z1", name="Buy Supplies", internal_name="BuySupplies", full_rule=JourneyRule() & HasIfOptionVanillaSkills(rules["Z1 Has Magic"] | rules["Z1 Has Combat"])),
-    Action()                        (zone="Z1", name="Haggle", rule=HasFromList("Z1 - Long Quest", "Filler - Progressive Lootable", count=1) & HasIfOptionVanillaSkills(rules["Z1 Has Magic"] | rules["Z1 Has Combat"])),
+    Action()                        (zone="Z1", name="Haggle", rule=HasFromList("Z1 - Long Quest", "Progressive Lootable", count=1) & HasIfOptionVanillaSkills(rules["Z1 Has Magic"] | rules["Z1 Has Combat"])),
     Action()                        (zone="Z1", name="Start Journey", internal_name="StartJourney", rule=JourneyRule() & HasIfOptionVanillaSkills(rules["Z1 Has Magic"] | rules["Z1 Has Combat"])),
     Action(Shop)                    (zone="Z1", name="AP Shop", internal_name="APShop", min=50, max=200, option="z1_shop"),
-    Action(Z2, Shop, Start)         (zone="Z1", name="AP Shop (Expensive)", internal_name="APShopExpensive", min=300, option="z1_shop_expensive", rule=rules["Has Practical Magic"] & HasFromList("Z1 - Lock", "Z1 - Short Quest", "Z1 - Long Quest", "Filler - Progressive Lootable", count=40)),
+    Action(Z2, Shop, Start)         (zone="Z1", name="AP Shop (Expensive)", internal_name="APShopExpensive", min=300, option="z1_shop_expensive", rule=rules["Has Practical Magic"] & HasFromList("Z1 - Lock", "Z1 - Short Quest", "Z1 - Long Quest", "Progressive Lootable", count=40)),
 
     Action(Multipart)               (zone="Z1", name="Heal The Sick", internal_name="Heal", option="heal", rule=rules["Z1 Has Magic"] & HasMana(2500)),
     Action(AddRule, Multipart)      (zone="Z1", name="Fight Monsters", internal_name="Fight", option="fight", rule=rules["Z1 Has Combat"] & HasMana(2000), add_rules=AddRuleTuple("pyromancy", 8, rules["Has Pyromancy"])),
@@ -626,7 +668,7 @@ all_actions: List[_Action] = [
     ]),
     # Explore Forest gives 50, Old Shortcut gives 20, Follow Flowers gives 130
     # aaaaaaaaaaaaaaaaa
-    Action(Z2, Batched, AddRule)    (zone="Z2", name="Herb", internal_name="Herbs", count=200, classification=ItemClassification.progression, lootable_classification=ItemClassification.filler, add_rules=[
+    Action(Z2, Batched, AddRule)    (zone="Z2", name="Herb", internal_name="Herbs", count=200, classification=ItemClassification.progression, lootable_classification=ItemClassification.filler, rule=HasIfOptionManaReduction(rules["Z2 - Talk To Hermit"]), add_rules=[
         AddRuleTuple("Explore or Shortcut or Flowers", 0, Has("Z2 - Explore Forest") | Has("Z2 - Old Shortcut") | Has("Z2 - Follow Flowers"), 'full_add'),
         AddRuleTuple("Explore or Flowers", 21, Has("Z2 - Explore Forest") | Has("Z2 - Follow Flowers"), 'full_add'),
         AddRuleTuple("(Explore and Shortcut) or Flowers", 51, (Has("Z2 - Explore Forest") & Has("Z2 - Old Shortcut")) | Has("Z2 - Follow Flowers"), 'full_add'),
@@ -652,7 +694,7 @@ all_actions: List[_Action] = [
     # *techincally* there's a rule here for 10 herbs but pffft that's not going to be an issue
     Action(Z2, Skill)               (zone="Z2", name="Alchemy", action_name="Learn Alchemy", internal_action_name="LearnAlchemy", classification=ItemClassification.progression, option="alchemy", every=5, full_rule=rules["Has Alchemy"]),
     Action(Z2, Skill)               (zone="Z2", name="Dark Magic", internal_name="Dark", action_name="Dark Magic", classification=ItemClassification.progression, internal_action_name="DarkMagic", full_rule=rules["Has Dark Magic"]),
-    Action(Z2, Buff)                (zone="Z2", name="Ritual", action_name="Dark Ritual", internal_action_name="DarkRitual", option="ritual", every=1, rule=Has("Z2 - Dark Magic") & Has("Z1 - Haggle") & rules["Has Soulstones"] & HasIfOptionManaReduction(rules["Z2 - Talk To Witch"]) & HasIfOptionVanillaSkills(rules["Has Dark Magic"]) & HasIfOptionVanillaAll(rules["Z2 - Talk To Witch"])),
+    Action(Z2, Buff)                (zone="Z2", name="Dark Ritual", internal_name="Ritual", action_name="Dark Ritual", internal_action_name="DarkRitual", option="ritual", every=1, rule=Has("Z2 - Dark Magic") & Has("Z1 - Haggle") & rules["Has Soulstones"] & HasIfOptionManaReduction(rules["Z2 - Talk To Witch"]) & HasIfOptionVanillaSkills(rules["Has Dark Magic"]) & HasIfOptionVanillaAll(rules["Z2 - Talk To Witch"])),
 
     # Zone 3
     Action(Z3, Progress)            (zone="Z3", name="Explore City", internal_name="City", classification=ItemClassification.progression),
@@ -675,6 +717,8 @@ all_actions: List[_Action] = [
 
     # I'm going to say the guilds are Z5+, but you still need the item for Gather Team/LDungeon/Architect bars
     Action(Z3, AddRule, Multipart)  (zone="Z3", name="Large Dungeon", internal_name="LDungeon", option="ld", rule=rules["Z3 - Large Dungeon"], add_rules=AddRuleTuple("pyromancy", 3, rules["Has Pyromancy"])),
+    # Incorrect, Craft Armor doesn't give any crafting exp, but there's nowhere better...
+    Action(Z3, Skill)               (zone="Z3", name="Crafting", internal_name="Crafting", action_name="CraftArmor", option="crafting", internal_action_name="CraftArmor", full_rule=HasAll("Z3 - Crafting Guild", "Z3 - Apprentice", "Z3 - Mason", "Z3 - Architect")),
 
     # Zone 4
     Action(Z4, Progress)            (zone="Z4", name="Climb Mountain", internal_name="Mountain"),

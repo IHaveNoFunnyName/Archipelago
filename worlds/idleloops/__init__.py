@@ -33,12 +33,6 @@ class IdleLoopsWeb(WebWorld):
     bug_report_page = "https://github.com/Neffy/IdleLoops_Archipelago/issues"
 
 
-def error_during_fuzz(message: str) -> None:
-    # I'm not sure how to check how it's being run. Comment out the one you don't want.
-    # raise OptionError(message)
-    warning(message)
-
-
 class IdleLoopsWorld(World):
     """
     Idle Loops is an incremental game with light optimisation elements.
@@ -53,10 +47,12 @@ class IdleLoopsWorld(World):
     location_name_to_id = location_name_to_id
 
     def handle_options(self) -> None:
+        if self.options.item_pots and (self.options.filler_nothing == 100 or (not self.options.filler_extra_mana_pot and not self.options.filler_starting_mana and not self.options.filler_starting_gold)):
+            raise OptionError(f"Idle Loops Player {self.player_name} Error: All basic sources of mana (Mana Pots, Starting Mana, Starting Gold) disabled")
         if self.options.item_search and not self.options.location_progress:
-            error_during_fuzz(f"Idle Loops Player {self.player_name} Recommendation: \"Items: Search\" is intended to break up the Progress Bar and Lootable rewards for each Progress action, without \"Locations: Progress Bars\" it doesn't need to do this and so can be disabled.")
+            warning(f"Idle Loops Player {self.player_name} Recommendation: \"Items: Search\" is intended to break up the Progress Bar and Lootable rewards for each Progress action, without \"Locations: Progress Bars\" it doesn't need to do this and so can be disabled.")
         if self.options.logic_vanilla_all:
-            error_during_fuzz(f"Idle Loops Player {self.player_name} Warning: \"Logic: Vanilla Requirements All\" causes generation problems.")
+            warning(f"Idle Loops Player {self.player_name} Warning: \"Logic: Vanilla Requirements All\" causes generation problems.")
         if self.options.goal < 3 and self.options.location_skill > IdleLoopsOptions.__annotations__["location_skill"].defaults[self.options.goal + 1]:
             warning(f"Idle Loops Player {self.player_name} Warning: \"Locations: Skill\" set above what is reasonable for a Z{self.options.goal + 1} goal.")
         if self.options.goal < 3 and self.options.location_fight > IdleLoopsOptions.__annotations__["location_fight"].defaults[self.options.goal + 1]:
@@ -64,7 +60,6 @@ class IdleLoopsWorld(World):
         if self.options.goal < 3 and self.options.location_heal > IdleLoopsOptions.__annotations__["location_heal"].defaults[self.options.goal + 1]:
             warning(f"Idle Loops Player {self.player_name} Warning: \"Locations: Heal\" set above what is reasonable for a Z{self.options.goal + 1} goal.")
         if self.options.goal == 0 and self.options.logic_z2_mana > 0:
-            warning(f"Idle Loops Player {self.player_name} Notice: \"Logic: Z2 Starting Mana\" is above 0 for a Z1 goal. Ignoring it.")
             self.options.logic_z2_mana.value = 0
 
         # Set defaults for -1 options
@@ -74,9 +69,9 @@ class IdleLoopsWorld(World):
                 option_value.value = self.options.__annotations__[option].defaults[self.options.goal]
 
         # x10 the option - option is Nx total mult, items are +0.1x
-        for option in ['filler_game_speed', 'filler_exp_mult']:
+        for option in ['item_game_speed', 'item_exp_mult']:
             option_value = getattr(self.options, option)
-            option_value.value = option_value.value * 10
+            option_value.value = max(option_value.value - 1, 0) * 10
 
         self.options.logic_fight_heal.value = 1 if self.multiworld.random.randint(0, 99) < self.options.logic_fight_heal.value else 0
 
@@ -147,10 +142,14 @@ class IdleLoopsWorld(World):
 
         self.used_locations = [(name, region) for action in all_actions for (name, region) in action.included_locations(self.options) if region in self.used_regions]
         self.used_items = [name for action in all_actions for name in action.included_items(self.options) if action.region[-1] <= self.goal[-1]]
-        item_count = reduce(lambda a, item: a + item["count"], self.used_items, 0)
 
-        if len(self.used_locations) < item_count:
+        item_count = reduce(lambda a, item: a + item["count"], self.used_items, 0)
+        location_count = len(self.used_locations)
+
+        if location_count < item_count:
             raise OptionError(f"Idle Loops Player {self.player_name} Error: More items than locations.")
+        if location_count - item_count < (50 - ((1 - self.options.item_pots) * 50)) / ((1 - self.options.filler_nothing / 100) + 0.001):
+            raise OptionError(f"Idle Loops Player {self.player_name} Error: Less than 50 Pots (+Starting Mana/Gold) in the item pool. Lower \"Filler: Nothing\", enabling more Locations or decreasing items like \"Item: Game Speed\".")
 
     def get_filler_item_names(self, count) -> List[str]:
 
@@ -159,7 +158,7 @@ class IdleLoopsWorld(World):
 
         if included_filler_count == 0:
             if self.options.filler_nothing == 0:
-                error_during_fuzz(f"You wanted to see what would happen, with 0 filler, huh? Well, I thought of it. To answer your question there was a division by 0.")
+                warning(f"You wanted to see what would happen, with 0 filler, huh? Well, I thought of it. To answer your question there was a division by 0.")
             filler_weights = [0, 0, 0, 1]
         else:
             filler_weights = [
@@ -181,15 +180,127 @@ class IdleLoopsWorld(World):
         return IdleLoopsItem(name, item_data["classification"], item_id, self.player)
 
     def create_items(self) -> None:
+
+        placed = {}
+        placed_anywhere = {}
+        # Run our own little rando just for Z1 required items
+        # Helps with fill errors as the rando doesn't have to place all these items in early spheres
+        # Also/mainly makes the game more fun
+        # As running pure rando logic seems to *love* "get lots of gold and haggle 4 times" over Heal/Fight
+        z1 = self.get_region("Z1")
+        exits = [self.get_region(exit) for exit, _ in self.used_regions["Z1"] if not exit.startswith("Z2")]
+        z1_regions: List[Region] = [z1] + exits
+        z1_locations: List[IdleLoopsLocation] = [location for region in z1_regions for location in region.get_locations()]
+
+        required_items = ["Z1 - Start Journey", "Z1 - Buy Supplies"]
+        if self.goal != "Z1" and (self.options.logic_fight_heal or self.options.logic_vanilla):
+            required_items += self.random.choice([["Z1 - Haggle", "Z1 - Heal The Sick", "Z1 - Mage Lessons"], ["Z1 - Fight Monsters", "Z1 - Warrior Lessons"]])
+        if self.options.logic_glasses:
+            required_items.append("Z1 - Buy Glasses")
+
+        meet_requirement = self.random.choice(["Z1 - Meet People", "Z1 - Throw Party"])
+
+        # If an item name is in `placed`, future items cannot be placed in any location it unlocks. (This isn't perfect, it should be "any item it requires", but that would require recursion and brain hurty)
+        # I say that but i'm sure the algorithm is quite elegant and easy to understand if i see it.
+        # By default this is locations that start with its name,
+        # this dict is for exceptions
+        excluded_rules = {
+            "Z1 - Mage Lessons": ["Magic", "Z1 - Heal The Sick", "Z1 - Small Dungeon"] if self.options.logic_vanilla else ["Magic", "Z1 - Heal The Sick"],
+            "Z1 - Warrior Lessons": ["Combat", "Z1 - Fight Monsters", "Z1 - Small Dungeon", "Z1 - Haggle"] if self.options.logic_vanilla else ["Combat", "Z1 - Fight Monsters"],
+            "Z1 - Buy Glasses": ["Z1 - Buy Glasses",
+                                 "Z1 - Wander - 6", "Z1 - Wander - 7", "Z1 - Wander - 8", "Z1 - Wander - 9", "Z1 - Wander - 100",
+                                 # Sorry mana pot 3 and 4, you will never have glasses
+                                 "Z1 - Mana Pot - #3", "Z1 - Mana Pot - #4", "Z1 - Mana Pot - #50", "Z1 - Mana Pot - #26", "Z1 - Mana Pot - #27", "Z1 - Mana Pot - #28", "Z1 - Mana Pot - #29",
+                                 "Z1 - Lock - #6", "Z1 - Lock - #7", "Z1 - Lock - #8", "Z1 - Lock - #9", "Z1 - Lock - #10"] if self.options.logic_glasses else ["Z1 - Buy Glasses"],
+            "Z1 - Investigate": ["Z1 - Investigate", "Z1 - Long Quest"],
+            "Z1 - Meet People": ["Z1 - Meet People", "Z1 - Short Quest"],
+            "Z1 - Throw Party": ["Z1 - Throw Party", "Z1 - Meet People - ", "Z1 - Short Quest"],
+            "Z1 - Lock - Search": ["Z1 - Lock"],
+            "Z1 - Short Quest - Search": ["Z1 - Short Quest"],
+            "Z1 - Long Quest - Search": ["Z1 - Long Quest"],
+        }
+
+        # Items to append to required_items when a location starting with it is locked.
+        # Locations not in this dict have the same dependent as their name
+        dependents = {
+            "Z1 - Small Dungeon": "Z1 - Small Dungeon",
+            "Z1 - Fight Monsters": ["Z1 - Fight Monsters", "Z1 - Warrior Lessons"],
+            "Z1 - Heal The Sick": ["Z1 - Heal The Sick", "Z1 - Mage Lessons"],
+            "Magic": "Z1 - Mage Lessons",
+            "Combat": "Z1 - Warrior Lessons",
+            "Z1 - AP Shop": "Z1 - AP Shop" if self.options.item_shop else [],
+            "Z1 - Investigate": "Z1 - Investigate",
+            "Z1 - Long Quest": ["Z1 - Investigate", "Z1 - Long Quest - Search"] if self.options.item_search else ["Z1 - Investigate"],
+            "Z1 - Meet People": meet_requirement,
+            "Z1 - Short Quest": [meet_requirement, "Z1 - Short Quest - Search"] if self.options.item_search else [meet_requirement],
+            "Z1 - Wander": [],
+            "Z1 - Smash Pot": [],
+        }
+        dependents_glasses = {
+            "Z1 - Wander - 6": "Z1 - Buy Glasses",
+            "Z1 - Wander - 7": "Z1 - Buy Glasses",
+            "Z1 - Wander - 8": "Z1 - Buy Glasses",
+            "Z1 - Wander - 9": "Z1 - Buy Glasses",
+            "Z1 - Wander - 100": "Z1 - Buy Glasses",
+            "Z1 - Mana Pot - #3": "Z1 - Buy Glasses",
+            "Z1 - Mana Pot - #4": "Z1 - Buy Glasses",
+            "Z1 - Mana Pot - #50": "Z1 - Buy Glasses",
+            "Z1 - Mana Pot - #26": "Z1 - Buy Glasses",
+            "Z1 - Mana Pot - #27": "Z1 - Buy Glasses",
+            "Z1 - Mana Pot - #28": "Z1 - Buy Glasses",
+            "Z1 - Mana Pot - #29": "Z1 - Buy Glasses",
+            "Z1 - Lock - #6": ["Z1 - Buy Glasses", "Z1 - Lock - Search"] if self.options.item_search else "Z1 - Buy Glasses",
+            "Z1 - Lock - #7": ["Z1 - Buy Glasses", "Z1 - Lock - Search"] if self.options.item_search else "Z1 - Buy Glasses",
+            "Z1 - Lock - #8": ["Z1 - Buy Glasses", "Z1 - Lock - Search"] if self.options.item_search else "Z1 - Buy Glasses",
+            "Z1 - Lock - #9": ["Z1 - Buy Glasses", "Z1 - Lock - Search"] if self.options.item_search else "Z1 - Buy Glasses",
+            "Z1 - Lock - #10": ["Z1 - Buy Glasses", "Z1 - Lock - Search"] if self.options.item_search else "Z1 - Buy Glasses",
+        }
+        if self.options.logic_glasses:
+            dependents.update(dependents_glasses)
+        # Hacky logic, add locks after the glasses checks so if it only checks this if it's not a 50%+ lock
+        dependents.update({
+            "Z1 - Lock": "Z1 - Lock - Search" if self.options.item_search else [],
+        })
+
+        while len(required_items):
+            if required_items[0] not in placed:
+                # Equal chance to put it in any players world (Well, weighted by total locations).
+                if self.random.random() < (len(self.used_locations) / len(self.multiworld.get_locations())):
+                    # Local
+
+                    while True:
+                        location = self.random.choice(z1_locations)
+                        if not location.locked and all([not location.name.startswith(y) for x in list(placed_anywhere.keys()) + [required_items[0]] for y in excluded_rules.get(x, [x])]):
+                            break
+                    placed[required_items[0]] = 1
+                    placed_anywhere[required_items[0]] = 1
+                    location.place_locked_item(self.create_item(required_items[0]))
+
+                    # Our rando is way worse than the AP rando, so only place dependents too when the restrictive start doesn't need help
+                    if self.goal != "Z1":
+                        for dependent in dependents:
+                            if location.name.startswith(dependent):
+                                next = dependents[dependent]
+                                required_items += next if isinstance(next, list) else [next]
+                                break
+
+                else:
+                    # Non-local
+
+                    # We will only place one of each item
+                    self.multiworld.early_items[self.player][required_items[0]] = 1
+                    placed_anywhere[required_items[0]] = 1
+            required_items.pop(0)
+
         items_added = 0
-        # Wander and Smash Pots are precollected so should are skipped here with [2::]
-        # There's a better way to do this
         for item in self.used_items:
-            for _ in range(item["count"]):
+            count = item["count"] - 1 if item["name"] in placed else item["count"]
+            for _ in range(count):
                 new_item = self.create_item(item["name"])
                 self.multiworld.itempool.append(new_item)
                 items_added += 1
-        filler_count = len(self.used_locations) - items_added
+        filler_count = len(self.used_locations) - len(placed) - items_added
+
         names = self.get_filler_item_names(filler_count)
         for name in names:
             new_item = self.create_item(name)
@@ -219,7 +330,7 @@ class IdleLoopsWorld(World):
     def set_rules(self) -> None:
         multiworld = self.multiworld
         for region in multiworld.get_regions(self.player):
-            for loc in region.locations:
+            for loc in region.get_locations():
                 if loc.name in self.rules:
                     self.set_rule(loc, self.rules[loc.name])
 
@@ -247,5 +358,6 @@ class IdleLoopsWorld(World):
             "skill_exp_mult",
             "bonus",
             # "soul_link",
-            "mod_ui_crime"
+            "mod_ui_crime",
+            "mod_color"
         )

@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from NetUtils import JSONMessagePart
 from Options import Option
 from typing import Any, Optional, TypedDict, override
 
@@ -13,7 +14,7 @@ def HasIfOptionManaReduction(action: str | Rule) -> Rule:
 
 
 def HasIfOptionVanillaSkills(action: str | Rule) -> Rule:
-    return (Has(action) if isinstance(action, str) else action) | OptionFilter(LogicVanilla, 1, operator="lt")
+    return (Has(action) if isinstance(action, str) else action) | OptionFilter(LogicVanilla, 0)
 
 
 def HasIfOptionVanillaAll(action: str | Rule) -> Rule:
@@ -52,7 +53,7 @@ def IfOption(condition: conditionType, true: Rule, false: Rule = None) -> Rule:
     return (true & OptionFilter(condition["option"], condition["value"], operator=condition["operator"])) | (false & OptionFilter(condition["option"], condition["value"], operator=operator_inverse[condition["operator"]]))
 
 
-has_mana_dependencies = ["Z1 - Mana Pot", "Filler - 50 Starting Mana", "Filler - 1 Starting Gold", "Filler - Progressive Lootable", "Z1 - Short Quest", "Z1 - Long Quest", "Z1 - Lock", "Z1 - Fight Monsters", "Z1 - Warrior Training"]
+has_mana_dependencies = ["Z1 - Mana Pot", "Filler - 50 Starting Mana", "Filler - 1 Starting Gold", "Progressive Lootable", "Z1 - Short Quest", "Z1 - Long Quest", "Z1 - Lock", "Z1 - Fight Monsters", "Z1 - Warrior Lessons"]
 
 
 def has_mana_from_state(mana_goal: int, rep_goal: int, fight_segments: int, state: CollectionState, player: int) -> bool:
@@ -69,7 +70,7 @@ def has_mana_from_state(mana_goal: int, rep_goal: int, fight_segments: int, stat
     # We need to calculate Progresive Lootables to know how many SQuests we have
     # Simpler version of the client .js logic, if we have enough Progressive Lootables to cap SQuests, we have all the mana we ever need for Z1 actions
     # So we can ignore later lootables
-    extra = state.count("Filler - Progressive Lootable", player)
+    extra = state.count("Progressive Lootable", player)
     old_extra = extra
     LQuests = state.count("Z1 - Long Quest", player)
     if LQuests < 2:
@@ -150,7 +151,7 @@ class HasMana(Rule["IdleLoopsWorld"], game="Idle Loops"):
 
     @override
     def _instantiate(self, world: "IdleLoopsWorld") -> Rule.Resolved:
-        return self.Resolved(self.mana_goal, rep_goal=self.rep_goal, fight_segments=int(world.options.logic_fight), player=world.player, caching_enabled=False)
+        return self.Resolved(player=world.player, mana_goal=self.mana_goal, rep_goal=self.rep_goal, fight_segments=int(world.options.logic_fight), caching_enabled=False)
 
     class Resolved(Rule.Resolved):
         mana_goal: int
@@ -165,11 +166,23 @@ class HasMana(Rule["IdleLoopsWorld"], game="Idle Loops"):
         def item_dependencies(self) -> dict[str, set[int]]:
             return {name: {id(self)} for name in has_mana_dependencies}
 
+        @override
+        def explain_json(self, state: CollectionState | None = None) -> list[JSONMessagePart]:
+            return [{"type": "text", "text": f"Has {self.mana_goal} mana{f' and {self.rep_goal} rep' if self.rep_goal > 0 else ''}"}]
+
+        @override
+        def explain_str(self, state: CollectionState | None = None) -> str:
+            return self.__str__()
+
+        @override
+        def __str__(self) -> str:
+            return f"Can get to {self.mana_goal} mana{f' and {self.rep_goal} rep' if self.rep_goal > 0 else ''}"
+
 
 class JourneyRule(Rule["IdleLoopsWorld"], game="Idle Loops"):
     @override
     def _instantiate(self, world: "IdleLoopsWorld") -> Rule.Resolved:
-        return self.Resolved(player=world.player, extra_mana=int(world.options.logic_z2_mana), fight_segments=int(world.options.logic_fight), caching_enabled=False)
+        return self.Resolved(player=world.player, extra_mana=int(world.options.logic_z2_mana) * 10000, fight_segments=int(world.options.logic_fight), caching_enabled=False)
 
     class Resolved(Rule.Resolved):
         extra_mana: int
@@ -177,14 +190,14 @@ class JourneyRule(Rule["IdleLoopsWorld"], game="Idle Loops"):
 
         @override
         def _evaluate(self, state: CollectionState) -> bool:
-            if not (state.has("Z1 - Start Journey", self.player) and state.has("Z1 - Buy Supplies", self.player)):
+            if not state.has("Z1 - Buy Supplies", self.player):
                 return False
             haggles = 0
             if state.has("Z1 - Haggle", self.player):
                 if state.has("Z1 - Heal The Sick", self.player) and state.has("Z1 - Mage Lessons", self.player):
                     haggles = 15
 
-                extra = state.count("Filler - Progressive Lootable", self.player)
+                extra = state.count("Progressive Lootable", self.player)
                 old_extra = extra
                 LQuests = state.count("Z1 - Long Quest", self.player)
                 if LQuests < 2:
@@ -204,12 +217,40 @@ class JourneyRule(Rule["IdleLoopsWorld"], game="Idle Loops"):
                 haggles = min(LQuests, 10)
 
             # Buy Supplies + Start Journey + 15 haggles + extra mana (Well, mana in it's unbought gold form) for each haggle under 15
-            # I want to do this but clearly it won't work as it's not passed world or player or state
             return has_mana_from_state(1200 + 1500 + ((15 - haggles) * 900) + self.extra_mana, 0, self.fight_segments, state, self.player)
 
         @override
         def item_dependencies(self) -> dict[str, set[int]]:
             return {name: {id(self)} for name in has_mana_dependencies + ["Z1 - Start Journey", "Z1 - Buy Supplies", "Z1 - Haggle", "Z1 - Heal The Sick", "Z1 - Mage Lessons"]}
+
+        def explain_json(self, state: CollectionState | None = None) -> list[JSONMessagePart]:
+            supplies = "green" if state and state.has("Z1 - Buy Supplies", self.player) else "salmon"
+            haggle = "green" if state and state.has("Z1 - Haggle", self.player) else "salmon"
+            heal = "green" if state and state.has("Z1 - Heal The Sick", self.player) else "salmon"
+            mage = "green" if state and state.has("Z1 - Mage Lessons", self.player) else "salmon"
+            fight = "green" if state and state.has("Z1 - Fight Monsters", self.player) else "salmon"
+            warrior = "green" if state and state.has("Z1 - Warrior Lessons", self.player) else "salmon"
+            return [{"type": "text", "text": f"Has "},
+                    {"type": "color", "color": supplies, "text": "Z1 - Buy Supplies"},
+                    {"type": "text", "text": f" and enough mana to leave Z1{f' with {self.extra_mana} mana' if self.extra_mana > 0 else ''}, via (("},
+                    {"type": "color", "color": haggle, "text": "Z1 - Haggle"},
+                    {"type": "text", "text": ", "},
+                    {"type": "color", "color": heal, "text": "Z1 - Heal The Sick"},
+                    {"type": "text", "text": ", "},
+                    {"type": "color", "color": mage, "text": "Z1 - Mage Lessons"},
+                    {"type": "text", "text": ") OR ("},
+                    {"type": "color", "color": fight, "text": "Z1 - Fight Monsters"},
+                    {"type": "text", "text": ", "},
+                    {"type": "color", "color": warrior, "text": "Z1 - Warrior Lessons"},
+                    {"type": "text", "text": ") OR (Just have enough mana (and probably "},
+                    {"type": "color", "color": haggle, "text": "Z1 - Haggle"},
+                    {"type": "text", "text": ")))"}]
+
+        def explain_str(self, state: CollectionState | None = None) -> str:
+            return self.__str__()
+
+        def __str__(self) -> str:
+            return f"Has Buy Supplies and enough mana to leave Z1{f' with {self.extra_mana} mana' if self.extra_mana > 0 else ''}, via ((Z1 - Haggle, Z1 - Heal The Sick, Z1 - Mage Lessons) OR (Z1 - Fight Monsters, Z1 - Warrior Lessons) OR (Just have enough mana (and probably Z1 - Haggle)))"
 
 
 # TODO: Here I go, not colocating things again!
@@ -232,7 +273,7 @@ rules["Meet People Progress"] = rules["Z1 - Meet People"] | rules["Z1 - Throw Pa
 rules["Z1 Has Combat"] = Has("Z1 - Warrior Lessons") & HasMana(1600, 2) & HasIfOptionVanillaAll(rules["Z1 - Investigate"])
 rules["Z1 Has Magic"] = Has("Z1 - Mage Lessons") & HasMana(1600, 2) & HasIfOptionVanillaAll(rules["Z1 - Investigate"])
 
-rules["Option Has Glasses"] = Has("Z1 - Buy Glasses", options=[OptionFilter(LogicGlasses, 1)], filtered_resolution=True)
+rules["Option Has Glasses"] = Has("Z1 - Buy Glasses") | OptionFilter(LogicGlasses, 0)
 
 # Simpler rules for after Z1. I'm *pretty sure* you need either heal/haggle or fight monsters to get out of Z1, so we shouldn't need to check for rep.
 rules["Has Combat"] = Has("Z1 - Warrior Lessons")

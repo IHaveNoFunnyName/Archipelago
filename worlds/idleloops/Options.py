@@ -83,13 +83,10 @@ class LogicFight(NamedRange):
     defaults = (5, 9, 9, 9)
 
 
-class LogicZ2Mana(Range):
-    """Minimum mana you can have going into Z2,
-    after checking all locations (in logic for the seed) in Z1."""
-    display_name = "Logic: Z2 Starting Mana"
-    range_start = 0
-    range_end = 20000
-    default = 5000
+class LogicZ2Mana(DefaultOnToggle):
+    """Have a minimum of 10k mana after Start Journey.
+    (With all possible items in Z1)"""
+    display_name = "Logic: Z2 Minimum Mana"
 
 
 class LogicManaReduction(DefaultOnToggle):
@@ -109,7 +106,8 @@ class LocationProgress(DefaultOnToggle):
 
 class ItemSearch(DefaultOnToggle):
     """Adds "x - Search" items, needed to check each lootable type.
-    (Lootables are stuff like Mana Pots)"""
+    (Lootables are stuff like Mana Pots)
+    Breaks the pool for a Progress Action that gives Lootables in two"""
     display_name = "Items: Lootable Search Items"
 
 
@@ -155,7 +153,11 @@ class LocationAlchemy(NamedRange):
 
 
 class LocationCrafting(NamedRange):
-    """Overwrite the max Crafting level."""
+    """Overwrite the max Crafting level.
+    FYI in Vanilla:
+    Apprentice gets you to 75
+    Mason gets you to 140
+    Architect gets you to 200."""
     display_name = "Locations: Crafting (Skill)"
     range_start = 0
     range_end = 100
@@ -163,7 +165,7 @@ class LocationCrafting(NamedRange):
         "goal_based": -1,
     }
     default = "goal_based"
-    defaults = (0, 0, 25, 50)
+    defaults = (0, 0, 70, 140)
 
 
 class LocationMultipartToggle(DefaultOnToggle):
@@ -271,7 +273,7 @@ class LocationZ1ShopCheap(DefaultOnToggle):
 
 
 class LocationZ1ShopExpensive(DefaultOnToggle):
-    """Adds extra, more expensive, items to the Z1 shop.
+    """Adds 10 extra, more expensive, items to the Z1 shop.
     Min gold cost is 300,
     Max gold cost is based on the goal:
     (Z2 = 400, Z3 = 600, Z4 = 1000)
@@ -314,12 +316,10 @@ class BatchZ2(DefaultOnToggle):
     display_name = "Batch Herbs/Wild Mana 10x"
 
 
-class ItemPots(DefaultOnToggle):
+class ItemPots(Toggle):
     """Removes the 50 "Z1 - Mana Pot" items from Vanilla from the randomiser.
     Makes your ratio of Mana Pots/Starting Gold/Mana nice and even."""
     display_name = "Filler Item: Remove Vanilla 50 Mana Pots"
-    option_false = 50
-    option_true = 0
 
 
 class FillerStartingMana(DefaultOnToggle):
@@ -337,32 +337,42 @@ class FillerExtraManaPot(DefaultOnToggle):
     display_name = "Filler Item: Extra Mana Pot"
 
 
-class FillerNothing(Range):
+class FillerNothing(NamedRange):
     """Percent chance a filler item will be 'nothing'
-    (instead of one of the filler items above)."""
+    (instead of one of the filler items above).
+    "Goal Based" is (Z1 = 0, Z2 = 25, Z3 = 50, Z4 = 75)"""
     display_name = "Filler Item: Nothing"
     range_start = 0
     range_end = 100
-    default = 50
+    default = "goal_based"
+    special_range_names = {
+        "goal_based": -1,
+    }
+    defaults = (0, 25, 50, 75)
 
 
-class FillerProgressiveLootable(Range):
+class ItemProgressiveLootable(NamedRange):
     """Adds extra Lootables to the pool,
     helping each Lootable to their max in *rough* order of usefulness and zone.
     If what an item practically gives is different from its name,
-    there will be an entry in the log."""
+    there will be an entry in the log.
+    "Goal Based" is (Z1 = 0, Z2+ = 20)"""
     display_name = "Item: Progressive Lootables"
     range_start = 0
     range_end = 40
-    default = 20
+    default = "goal_based"
+    special_range_names = {
+        "goal_based": -1,
+    }
+    defaults = (0, 20, 20, 20)
 
 
 class GameSpeed(NamedRange):
     """Multiplicative with the option below.
-    "Goal Based" is (Z1 = 2, Z2 = 2, Z3 = 3, Z4 = 3)"""
+    "Goal Based" is (Z1/2 = 2, Z3/4 = 3)"""
     display_name = "Global Game Speed"
     range_start = 1
-    range_end = 10
+    range_end = 5
     default = "goal_based"
     special_range_names = {
         "goal_based": -1,
@@ -370,14 +380,14 @@ class GameSpeed(NamedRange):
     defaults = (2, 2, 3, 3)
 
 
-class FillerGameSpeed(NamedRange):
+class ItemGameSpeed(NamedRange):
     """Adds +0.1 Game Speed items to the pool, to a total of (value)x.
     Multiplicative with the option above.
     The game slows down over time so this helps it feel more even.
-    "Goal Based" is (Z1 = 2, Z2 = 2, Z3 = 3, Z4 = 3)"""
-    display_name = "Item: Filler Game Speed"
+    "Goal Based" is (Z1/2 = 2, Z3/4 = 3)"""
+    display_name = "Item: Game Speed"
     range_start = 1
-    range_end = 10
+    range_end = 5
     default = "goal_based"
     special_range_names = {
         "goal_based": -1,
@@ -389,17 +399,17 @@ class StatExpMult(Range):
     """Multiplicative with the option below."""
     display_name = "Global Stat Exp Mult"
     range_start = 1
-    range_end = 10
+    range_end = 5
     default = 1
 
 
-class FillerExpMult(Range):
+class ItemExpMult(Range):
     """Adds +0.1 Exp Multiplier items to the pool, to a total of (value)x.
     Multiplicative with the option above."""
-    display_name = "Item: Filler Exp Mult"
+    display_name = "Item: Exp Mult"
     range_start = 1
-    range_end = 10
-    default = 5
+    range_end = 5
+    default = 1
 
 
 class SkillExpMult(Range):
@@ -407,8 +417,8 @@ class SkillExpMult(Range):
     lets cut that down huh?"""
     display_name = "Global Skill Exp Mult"
     range_start = 1
-    range_end = 10
-    default = 2
+    range_end = 5
+    default = 1
 
 
 class Bonus(Choice):
@@ -446,6 +456,13 @@ class ModUICrime(DefaultOnToggle):
     display_name = "Mod: Fix Vanilla UI Crimes"
 
 
+class ModColor(DefaultOnToggle):
+    """Fixes the inverted color display of the Lloyd fork's dark mode.
+    Mana is Blue and Strength is Red again!
+    (and aligns AP colors with other games)"""
+    display_name = "Mod: Fix Lloyd Fork's Dark Mode Colors"
+
+
 option_groups = [
     OptionGroup("Advanced", [
         LogicFight,
@@ -470,7 +487,6 @@ option_groups = [
 class IdleLoopsOptions(DeathLinkMixin, PerGameCommonOptions):
     goal: Goal
     logic_vanilla: LogicVanilla
-    logic_vanilla_all: LogicVanillaAll
     logic_mana_reduction: LogicManaReduction
     logic_fight: LogicFight
     logic_glasses: LogicGlasses
@@ -478,7 +494,6 @@ class IdleLoopsOptions(DeathLinkMixin, PerGameCommonOptions):
     logic_z2_mana: LogicZ2Mana
     logic_fight_heal: LogicFightHeal
     location_progress: LocationProgress
-    item_search: ItemSearch
     location_skill_toggle: LocationSkillToggle
     location_buff_toggle: LocationBuffToggle
     location_skill: LocationSkill
@@ -492,6 +507,7 @@ class IdleLoopsOptions(DeathLinkMixin, PerGameCommonOptions):
     location_ld: LocationLargeDungeon
     location_trolls: LocationTrolls
     location_mind: LocationMind
+    item_search: ItemSearch
     item_shop: ItemShop
     location_z1_shop: LocationZ1ShopCheap
     location_z1_shop_expensive: LocationZ1ShopExpensive
@@ -503,13 +519,15 @@ class IdleLoopsOptions(DeathLinkMixin, PerGameCommonOptions):
     filler_starting_gold: FillerStartingGold
     filler_extra_mana_pot: FillerExtraManaPot
     filler_nothing: FillerNothing
-    filler_progressive_lootable: FillerProgressiveLootable
+    item_progressive_lootable: ItemProgressiveLootable
     game_speed: GameSpeed
-    filler_game_speed: FillerGameSpeed
+    item_game_speed: ItemGameSpeed
     stat_exp_mult: StatExpMult
-    filler_exp_mult: FillerExpMult
+    item_exp_mult: ItemExpMult
     skill_exp_mult: SkillExpMult
+    logic_vanilla_all: LogicVanillaAll
     bonus: Bonus
     # soul_link: SoulLink
     # energy_link: EnergyLink
     mod_ui_crime: ModUICrime
+    mod_color: ModColor
