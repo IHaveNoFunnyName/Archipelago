@@ -67,10 +67,18 @@ class LogicFightHeal(Range):
     default = 75
 
 
+class LogicHaggle(Toggle):
+    """Haggle will appear in Z1.
+    This probably does the same thing as
+    "Logic: Z2 Minimum Mana" in advanced (Default on)
+    (It's hard to get to 10k without haggle)
+    But maybe you want to make the requirement explicit."""
+    display_name = "Logic: Haggle in Z1"
+
+
 class LogicFight(NamedRange):
-    """The randomizer knows how much mana you have access to (In Z1).
-    As the gold you get from Fight Monsters is variable,
-    it needs to know how much you want to grind it up.
+    """As the gold you get from Fight Monsters is variable,
+    the randomizer needs to know how much you want to grind it up.
 
     "Goal Based" is (Z1 = 5, Z2+ = 9)"""
     display_name = "Logic: Fight Monsters Segments"
@@ -99,8 +107,9 @@ class LogicManaReduction(DefaultOnToggle):
 class LocationProgress(DefaultOnToggle):
     """Adds locations to progress bars (around every 10%)
 
-    Otherwise, there is only one location per progress bar,
-    for the first completion of its action."""
+    Caution: Turning too many locations off while having additional items
+    (from e.g. "Items: Progressive Lootables" or "Items: Game Speed")
+    will break generation."""
     display_name = "Locations: Progress Bars"
 
 
@@ -116,20 +125,32 @@ class LocationSkillToggle(DefaultOnToggle):
     Combat, Magic, Practical Magic, Dark Magic, Chronomancy and Pyromancy:
     (Z1 = 30, Z2 = 50, Z3 = 100, Z4 = 200)
     Alchemy: (Z2 = 25, Z3 = 50, Z4 = 75)
-    Crafting: (Z3 = 25, Z4 = 50)"""
+    Crafting: (Z3 = 25, Z4 = 50)
+
+    Caution: Turning too many locations off while having additional items
+    (from e.g. "Items: Progressive Lootables" or "Items: Game Speed")
+    will break generation."""
     display_name = "Locations: Skills"
 
 
 class LocationBuffToggle(DefaultOnToggle):
     """Adds locations for buffs based on the goal:
     Dark Ritual: (Z2 = 1, Z3 = 2, Z4 = 10)
-    Imbue Mind: (Z4 = 1)"""
+    Imbue Mind: (Z4 = 1)
+
+    Caution: Turning too many locations off while having additional items
+    (from e.g. "Items: Progressive Lootables" or "Items: Game Speed")
+    will break generation."""
     display_name = "Locations: Buffs"
 
 
 class LocationSkill(NamedRange):
     """Overwrite the max level for 'normal' skills.
-    (Combat, Magic, Practical Magic, Dark Magic, Chronomancy and Pyromancy)"""
+    (Combat, Magic, Practical Magic, Dark Magic, Chronomancy and Pyromancy)
+
+    Caution: Turning too many locations off while having additional items
+    (from e.g. "Items: Progressive Lootables" or "Items: Game Speed")
+    will break generation."""
     display_name = "Locations: Skills Max Level"
     range_start = 0
     range_end = 500
@@ -141,7 +162,11 @@ class LocationSkill(NamedRange):
 
 
 class LocationAlchemy(NamedRange):
-    """Overwrite the max Alchemy level."""
+    """Overwrite the max Alchemy level.
+
+    Caution: Turning too many locations off while having additional items
+    (from e.g. "Items: Progressive Lootables" or "Items: Game Speed")
+    will break generation."""
     display_name = "Locations: Alchemy (Skill)"
     range_start = 0
     range_end = 100
@@ -157,10 +182,14 @@ class LocationCrafting(NamedRange):
     FYI in Vanilla:
     Apprentice gets you to 75
     Mason gets you to 140
-    Architect gets you to 200."""
+    Architect gets you to... 298
+
+    Caution: Turning too many locations off while having additional items
+    (from e.g. "Items: Progressive Lootables" or "Items: Game Speed")
+    will break generation."""
     display_name = "Locations: Crafting (Skill)"
     range_start = 0
-    range_end = 100
+    range_end = 290
     special_range_names = {
         "goal_based": -1,
     }
@@ -175,12 +204,20 @@ class LocationMultipartToggle(DefaultOnToggle):
     Small Dungeon: (Z1 = 3, Z2 = 4, Z3 = 6/max)
     Large Dungeon: (Z3 = 2, Z4 = 9/max)
     Trolls: (Z4 = 5)
-    The Guilds do not have locations on them."""
+    The Guilds do not have locations on them.
+
+    Caution: Turning too many locations off while having additional items
+    (from e.g. "Items: Progressive Lootables" or "Items: Game Speed")
+    will break generation."""
     display_name = "Locations: Multipart Actions"
 
 
 class LocationHeal(NamedRange):
-    """Overwrite how many patients to heal."""
+    """Overwrite how many patients to heal.
+
+    Caution: Turning too many locations off while having additional items
+    (from e.g. "Items: Progressive Lootables" or "Items: Game Speed")
+    will break generation."""
     display_name = "Locations: Heal The Sick"
     range_start = 0
     range_end = 20
@@ -192,7 +229,11 @@ class LocationHeal(NamedRange):
 
 
 class LocationFight(NamedRange):
-    """Overwrite how many monsters to fight."""
+    """Overwrite how many monsters to fight.
+
+    Caution: Turning too many locations off while having additional items
+    (from e.g. "Items: Progressive Lootables" or "Items: Game Speed")
+    will break generation."""
     display_name = "Locations: Fight Monsters"
     range_start = 0
     range_end = 15
@@ -204,7 +245,11 @@ class LocationFight(NamedRange):
 
 
 class LocationSmallDungeon(NamedRange):
-    """Overwrite how many Small Dungeon floors to clear."""
+    """Overwrite how many Small Dungeon floors to clear.
+
+    Caution: Turning too many locations off while having additional items
+    (from e.g. "Items: Progressive Lootables" or "Items: Game Speed")
+    will break generation."""
     display_name = "Locations: Small Dungeon"
     range_start = 0
     range_end = 6
@@ -216,7 +261,11 @@ class LocationSmallDungeon(NamedRange):
 
 
 class LocationLargeDungeon(NamedRange):
-    """Overwrite how many Large Dungeon floors to clear."""
+    """Overwrite how many Large Dungeon floors to clear.
+
+    Caution: Turning too many locations off while having additional items
+    (from e.g. "Items: Progressive Lootables" or "Items: Game Speed")
+    will break generation."""
     display_name = "Locations: Large Dungeon"
     range_start = 0
     range_end = 9
@@ -228,7 +277,11 @@ class LocationLargeDungeon(NamedRange):
 
 
 class LocationTrolls(Range):
-    """Overwrite how many of Trolls to fight."""
+    """Overwrite how many of Trolls to fight.
+
+    Caution: Turning too many locations off while having additional items
+    (from e.g. "Items: Progressive Lootables" or "Items: Game Speed")
+    will break generation."""
     display_name = "Locations: Trolls"
     range_start = 0
     range_end = 10
@@ -237,7 +290,11 @@ class LocationTrolls(Range):
 
 
 class LocationRitual(NamedRange):
-    """Overwrite how many Dark Rituals to perform."""
+    """Overwrite how many Dark Rituals to perform.
+
+    Caution: Turning too many locations off while having additional items
+    (from e.g. "Items: Progressive Lootables" or "Items: Game Speed")
+    will break generation."""
     display_name = "Locations: Dark Ritual"
     range_start = 0
     range_end = 10
@@ -249,7 +306,11 @@ class LocationRitual(NamedRange):
 
 
 class LocationMind(Range):
-    """Overwrite how many Imbues to Mind."""
+    """Overwrite how many Imbues to Mind.
+
+    Caution: Turning too many locations off while having additional items
+    (from e.g. "Items: Progressive Lootables" or "Items: Game Speed")
+    will break generation."""
     display_name = "Locations: Imbue Mind"
     range_start = 0
     range_end = 5
@@ -268,8 +329,6 @@ class ItemShop(Toggle):
 class LocationZ1ShopCheap(DefaultOnToggle):
     """Adds 10 buyable items to Z1, ranging from 50 to 200 gold."""
     display_name = "Locations: Z1 AP Shop"
-    option_false = 0
-    option_true = 10
 
 
 class LocationZ1ShopExpensive(DefaultOnToggle):
@@ -279,8 +338,6 @@ class LocationZ1ShopExpensive(DefaultOnToggle):
     (Z2 = 400, Z3 = 600, Z4 = 1000)
     Affordable after you get PM."""
     display_name = "Locations: Z1 AP Shop (Expensive)"
-    option_false = 0
-    option_true = 10
 
 
 class Z1ShopExpensiveMax(NamedRange):
@@ -300,8 +357,6 @@ class Z1ShopExpensiveMax(NamedRange):
 class LocationZ3Shop(DefaultOnToggle):
     """Adds 10 buyable items to Z3, ranging from 500 to 1000 gold."""
     display_name = "Locations: Z3 AP Shop"
-    option_false = 0
-    option_true = 10
 
 
 class BatchZ2(DefaultOnToggle):
@@ -340,7 +395,9 @@ class FillerExtraManaPot(DefaultOnToggle):
 class FillerNothing(NamedRange):
     """Percent chance a filler item will be 'nothing'
     (instead of one of the filler items above).
-    "Goal Based" is (Z1 = 0, Z2 = 25, Z3 = 50, Z4 = 75)"""
+    "Goal Based" is (Z1 = 0, Z2 = 25, Z3 = 50, Z4 = 75)
+
+    Causes an error if less than 50 Pot-Equivalent items are put into the pool."""
     display_name = "Filler Item: Nothing"
     range_start = 0
     range_end = 100
@@ -493,6 +550,7 @@ class IdleLoopsOptions(DeathLinkMixin, PerGameCommonOptions):
     item_glasses: ItemGlasses
     logic_z2_mana: LogicZ2Mana
     logic_fight_heal: LogicFightHeal
+    logic_haggle: LogicHaggle
     location_progress: LocationProgress
     location_skill_toggle: LocationSkillToggle
     location_buff_toggle: LocationBuffToggle

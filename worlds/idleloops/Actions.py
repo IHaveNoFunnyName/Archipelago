@@ -533,6 +533,24 @@ class Buff(Skill):
         super().__init__(**kwargs)
         self.option_toggle = "location_buff_toggle"
 
+    def location_list(self) -> List[str]:
+        return [self.unlock_item_name()] + [f"{self.name} {n}" for n in self.location_numbers]
+
+    def included_locations(self, options: IdleLoopsOptions) -> List[Tuple[int, int]]:
+        option_value = getattr(options, "location_" + self.option)
+        if not getattr(options, self.option_toggle) or option_value == 0:
+            return [(f"{self.zone} - {self.action_name}", self.region)]
+        region = int(self.region[-1])
+
+        locations = []
+        for level in self.location_numbers:
+            if level > option_value:
+                break
+            if level > IdleLoopsOptionsClass.__annotations__["location_" + self.option].defaults[region - 1] and region <= options.goal:
+                region += 1
+            locations.append((f"{self.name} {level}", "Z" + str(region) + "_" + self.name))
+        return locations
+
 
 class Extra():
     def __init__(self, option: str = None, **kwargs):

@@ -52,7 +52,7 @@ class IdleLoopsWorld(World):
         if self.options.item_search and not self.options.location_progress:
             warning(f"Idle Loops Player {self.player_name} Recommendation: \"Items: Search\" is intended to break up the Progress Bar and Lootable rewards for each Progress action, without \"Locations: Progress Bars\" it doesn't need to do this and so can be disabled.")
         if self.options.logic_vanilla_all:
-            warning(f"Idle Loops Player {self.player_name} Warning: \"Logic: Vanilla Requirements All\" causes generation problems.")
+            warning(f"Idle Loops Player {self.player_name} Warning: \"Logic: Vanilla Requirements All\" enabled. This option works but is unsupported.")
         if self.options.goal < 3 and self.options.location_skill > IdleLoopsOptions.__annotations__["location_skill"].defaults[self.options.goal + 1]:
             warning(f"Idle Loops Player {self.player_name} Warning: \"Locations: Skill\" set above what is reasonable for a Z{self.options.goal + 1} goal.")
         if self.options.goal < 3 and self.options.location_fight > IdleLoopsOptions.__annotations__["location_fight"].defaults[self.options.goal + 1]:
@@ -195,6 +195,9 @@ class IdleLoopsWorld(World):
         required_items = ["Z1 - Start Journey", "Z1 - Buy Supplies"]
         if self.goal != "Z1" and (self.options.logic_fight_heal or self.options.logic_vanilla):
             required_items += self.random.choice([["Z1 - Haggle", "Z1 - Heal The Sick", "Z1 - Mage Lessons"], ["Z1 - Fight Monsters", "Z1 - Warrior Lessons"]])
+        if self.options.logic_haggle:
+            # It doesn't matter if this is added twice, it ignores ones it already placed
+            required_items.append("Z1 - Haggle")
         if self.options.logic_glasses:
             required_items.append("Z1 - Buy Glasses")
 
@@ -263,7 +266,7 @@ class IdleLoopsWorld(World):
         })
 
         while len(required_items):
-            if required_items[0] not in placed:
+            if required_items[0] not in placed_anywhere:
                 # Equal chance to put it in any players world (Well, weighted by total locations).
                 if self.random.random() < (len(self.used_locations) / len(self.multiworld.get_locations())):
                     # Local
