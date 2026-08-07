@@ -652,7 +652,7 @@ all_actions: List[_Action] = [
     Action(Start, Limited, AddRule) (zone="Z1", name="Mana Pot", internal_name="Pots", count=50, option="pots", lootable_classification=ItemClassification.progression_deprioritized_skip_balancing, add_rules=AddRuleTuple("glasses", 26, rules["Option Has Glasses"])),
     Action(Limited, AddRule)        (zone="Z1", name="Lock", internal_name="Locks", count=10, lootable_classification=ItemClassification.progression_deprioritized_skip_balancing, add_rules=AddRuleTuple("glasses", 6, rules["Option Has Glasses"])),
     Action(Extra)                   (zone="Z1", name="Buy Glasses", internal_name="BuyGlasses", option="item_glasses",
-                                     rule=HasFromList("Z1 - Lock", "Z1 - Short Quest", "Z1 - Long Quest", "Progressive Lootable", count=1) | Has("Filler - 1 Starting Gold", 10)
+                                     rule=(Has("Z1 - Lock") & HasMana(450) | Has("Z1 - Short Quest") & HasMana(650) | HasFromList("Z1 - Long Quest", "Progressive Lootable") & HasMana(1550)) | Has("Filler - 1 Starting Gold", 10)
                                      ),
     Action()                        (zone="Z1", name="Buy Mana", internal_name="BuyMana"),
     Action(Progress)                (zone="Z1", name="Meet People", internal_name="Met", full_rule=IfOption({"option": LocationProgress}, rules["Meet People Progress"], rules["Z1 - Meet People"])),

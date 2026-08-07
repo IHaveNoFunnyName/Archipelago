@@ -30,7 +30,7 @@ class IdleLoopsWeb(WebWorld):
     tutorials = [guide_en]
     option_groups = option_groups
 
-    bug_report_page = "https://github.com/Neffy/IdleLoops_Archipelago/issues"
+    bug_report_page = "https://github.com/IHaveNoFunnyName/IdleLoopsAP/issues"
 
 
 class IdleLoopsWorld(World):

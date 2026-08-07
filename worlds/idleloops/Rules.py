@@ -273,7 +273,8 @@ rules["Meet People Progress"] = rules["Z1 - Meet People"] | rules["Z1 - Throw Pa
 rules["Z1 Has Combat"] = Has("Z1 - Warrior Lessons") & HasMana(1600, 2) & HasIfOptionVanillaAll(rules["Z1 - Investigate"])
 rules["Z1 Has Magic"] = Has("Z1 - Mage Lessons") & HasMana(1600, 2) & HasIfOptionVanillaAll(rules["Z1 - Investigate"])
 
-rules["Option Has Glasses"] = Has("Z1 - Buy Glasses") | OptionFilter(LogicGlasses, 0)
+# Arbitrary HasMana rule so you're able to do some decent Wandering after buying them.
+rules["Option Has Glasses"] = (Has("Z1 - Buy Glasses") & HasMana(1500)) | OptionFilter(LogicGlasses, 0)
 
 # Simpler rules for after Z1. I'm *pretty sure* you need either heal/haggle or fight monsters to get out of Z1, so we shouldn't need to check for rep.
 rules["Has Combat"] = Has("Z1 - Warrior Lessons")
