@@ -206,9 +206,9 @@ class Progress(Region):
             if hasattr(self, "add_rules"):
                 region = ""
                 for add_rule in self.add_rules:
-                    if i >= add_rule.at:
-                        region = "_" + add_rule.name
+                    if i < add_rule.at:
                         break
+                    region = "_" + add_rule.name
                 output.append((name, self.name + region))
             else:
                 output.append((name, self.name))
@@ -275,9 +275,9 @@ class Limited(LimitedLocations, Region):
             if hasattr(self, "add_rules"):
                 region = ""
                 for add_rule in self.add_rules:
-                    if i >= add_rule.at:
-                        region = "_" + add_rule.name
+                    if i < add_rule.at:
                         break
+                    region = "_" + add_rule.name
                 output.append((name, self.name + region))
             else:
                 output.append((name, self.name))
@@ -310,9 +310,9 @@ class Batched(Limited):
                 if hasattr(self, "add_rules"):
                     region = ""
                     for add_rule in self.add_rules:
-                        if i * self.batch_size >= add_rule.at:
-                            region = "_" + add_rule.name
+                        if i * self.batch_size < add_rule.at:
                             break
+                        region = "_" + add_rule.name
                     output.append((name, self.name + region))
                 else:
                     output.append((name, self.name))
