@@ -305,4 +305,4 @@ rules["Has Soulstones"] = (
     (Has("Z2 - Continue On") & Has("Z3 - Start Trek") & Has("Z3 - Buy Pickaxe") & (Has("Z4 - Soulstone") & rules["Z4 - Explore Cavern"]))
 )
 
-rules["Has Pyromancy"] = OptionFilter(Goal, 4, "lt") | Has("Z4 - Pyromancy") & HasIfOptionManaReduction(rules["Z4 - Decipher Runes"]) & HasIfOptionVanillaSkills(rules["Has Magic"]) & HasIfOptionVanillaAll(rules["Z4 - Decipher Runes"])
+rules["Has Pyromancy"] = OptionFilter(Goal, Goal.option_z4, "lt") | Has("Z4 - Pyromancy") & HasIfOptionManaReduction(rules["Z4 - Decipher Runes"]) & HasIfOptionVanillaSkills(rules["Has Magic"]) & HasIfOptionVanillaAll(rules["Z4 - Decipher Runes"])
