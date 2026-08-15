@@ -1,4 +1,5 @@
 from functools import reduce
+import itertools
 
 from Options import OptionError
 from logging import warning
@@ -30,7 +31,7 @@ class IdleLoopsWeb(WebWorld):
     tutorials = [guide_en]
     option_groups = option_groups
 
-    bug_report_page = "https://github.com/IHaveNoFunnyName/IdleLoopsAP/issues"
+    bug_report_page = "https://github.com/IHaveNoFunnyName/IdleLoopsAP/issues?q=is%3Aissue%20state%3Aopen%20label%3Abug%2C%22Minor%20bug%22"
 
 
 class IdleLoopsWorld(World):
@@ -45,6 +46,7 @@ class IdleLoopsWorld(World):
     options: IdleLoopsOptions
     item_name_to_id = item_to_id
     location_name_to_id = location_name_to_id
+    glitches_item_name = "Hard"
 
     def handle_options(self) -> None:
         if self.options.item_pots and (self.options.filler_nothing == 100 or (not self.options.filler_extra_mana_pot and not self.options.filler_starting_mana and not self.options.filler_starting_gold)):
@@ -82,39 +84,31 @@ class IdleLoopsWorld(World):
 
         self.handle_options()
         self.goal = "Z" + str(self.options.goal + 1)
-        self.rules = {}
-        self.used_regions = {
-            "Menu": [("Z1", True_())],
-            "Z1": []
-        }
-        base_regions = ["Z1"]
 
+        self.rules = {}
         for action in all_actions:
             self.rules.update(action.rules(self.options))
-
-        if self.goal != "Z1":
-            self.used_regions["Z1"] = [("Z2", self.rules["Z1 - Start Journey"])]
-            self.used_regions["Z2"] = []
-            base_regions.append("Z2")
-            if self.goal != "Z2":
-                self.used_regions["Z2"] = [("Z3", self.rules["Z2 - Continue On"])]
-                self.used_regions["Z3"] = []
-                base_regions.append("Z3")
-                if self.goal != "Z3":
-                    self.used_regions["Z3"] = [("Z4", self.rules["Z3 - Start Trek"])]
-                    self.used_regions["Z4"] = []
-                    base_regions.append("Z4")
+        # Called "used_regions" because that's what it used to be
+        # But I want to use "CanReachRegion" all over the place
+        # so all regions need to exist all the time, just empty.
+        self.used_regions = {
+            "Menu": [("Z1", True_())],
+            "Z1": [("Z2", self.rules["Z1 - Start Journey"])],
+            "Z2": [("Z3", self.rules["Z2 - Continue On"])],
+            "Z3": [("Z4", self.rules["Z3 - Start Trek"])],
+            "Z4": []
+        }
+        base_regions = ["Z1", "Z2", "Z3", "Z4"]
 
         for action in all_actions:
-            if action.region[-1] <= self.goal[-1]:
-                for new_region_name, region_data in action.regions(self.options).items():
-                    if not region_data["multi_region"]:
-                        self.used_regions[new_region_name] = []
-                        self.used_regions[action.region].append((new_region_name, region_data["rule"]))
-                    else:
-                        for region in base_regions:
-                            self.used_regions[region + "_" + new_region_name] = []
-                            self.used_regions[region].append((region + "_" + new_region_name, region_data["rule"]))
+            for new_region_name, region_data in action.regions(self.options).items():
+                if not region_data["multi_region"]:
+                    self.used_regions[new_region_name] = []
+                    self.used_regions[action.region].append((new_region_name, region_data["rule"]))
+                else:
+                    for region in base_regions:
+                        self.used_regions[region + " " + new_region_name] = []
+                        self.used_regions[region].append((region + " " + new_region_name, region_data["rule"]))
 
         # This might not need to exist, it just did on the apworld i based this off.
         self.all_items = [item.copy() for item in all_items]
@@ -140,7 +134,7 @@ class IdleLoopsWorld(World):
             self.multiworld.early_items[self.player]["Z1 - Meet People"] = 1
             self.multiworld.early_items[self.player]["Z1 - Mana Pot"] = 8
 
-        self.used_locations = [(name, region) for action in all_actions for (name, region) in action.included_locations(self.options) if region in self.used_regions]
+        self.used_locations = [(name, region) for action in all_actions for (name, region) in action.included_locations(self.options) if action.region[-1] <= self.goal[-1]]
         self.used_items = [name for action in all_actions for name in action.included_items(self.options) if action.region[-1] <= self.goal[-1]]
 
         item_count = reduce(lambda a, item: a + item["count"], self.used_items, 0)
@@ -174,10 +168,23 @@ class IdleLoopsWorld(World):
             k=count
         )
 
-    def create_item(self, name: str) -> Item:
+    def create_item(self, name: str, classification=False) -> Item:
         item_id = self.item_name_to_id[name]
-        item_data = self.all_items[item_id - 1]
-        return IdleLoopsItem(name, item_data["classification"], item_id, self.player)
+        if not classification:
+            item_data = self.all_items[item_id - 1]
+            classification = item_data["classification"]
+            # I don't understand why this is needed, we're not calling create_item without a classification
+            # for an item with an iterable classification. idgi
+            # i'm not happy with this implimentation for multi-classification items at all
+
+            # Still confused at the above but this is needed by UT so
+            # I think UT creates many many items so the iterator runs out, just make a progression one in that case
+            try:
+                if isinstance(classification, itertools.chain):
+                    classification = classification.__next__()
+            except Exception:
+                classification = ItemClassification.progression
+        return IdleLoopsItem(name, classification, item_id, self.player)
 
     def create_items(self) -> None:
 
@@ -298,10 +305,20 @@ class IdleLoopsWorld(World):
         items_added = 0
         for item in self.used_items:
             count = item["count"] - 1 if item["name"] in placed else item["count"]
-            for _ in range(count):
-                new_item = self.create_item(item["name"])
-                self.multiworld.itempool.append(new_item)
-                items_added += 1
+            classification = item["classification"]
+            # Dumb code duplication
+            if isinstance(classification, itertools.chain):
+                classification = classification.__iter__()
+                for _ in range(count):
+                    next_class = classification.__next__()
+                    new_item = self.create_item(item["name"], next_class)
+                    self.multiworld.itempool.append(new_item)
+                    items_added += 1
+            else:
+                for _ in range(count):
+                    new_item = self.create_item(item["name"], classification)
+                    self.multiworld.itempool.append(new_item)
+                    items_added += 1
         filler_count = len(self.used_locations) - len(placed) - items_added
 
         names = self.get_filler_item_names(filler_count)
@@ -340,18 +357,17 @@ class IdleLoopsWorld(World):
         for region_name, region_data in self.used_regions.items():
             for connection, rule in region_data:
                 self.create_entrance(self.get_region(region_name), self.get_region(connection), rule)
-
-        if self.goal == "Z1":
-            self.set_completion_rule(self.rules["Z1 - Start Journey"])
-        elif self.goal == "Z2":
-            self.set_completion_rule(self.rules["Z2 - Continue On"])
-        elif self.goal == "Z3":
-            self.set_completion_rule(self.rules["Z3 - Start Trek"])
-        elif self.goal == "Z4":
-            self.set_completion_rule(self.rules["Z4 - Face Judgement"])
+        completion_rule = self.rules["Z1 - Start Journey"]
+        if self.goal != "Z1":
+            completion_rule &= self.rules["Z2 - Continue On"]
+            if self.goal != "Z2":
+                completion_rule &= self.rules["Z3 - Start Trek"]
+                if self.goal != "Z3":
+                    completion_rule &= self.rules["Z4 - Face Judgement"]
+        self.set_completion_rule(completion_rule)
 
     def fill_slot_data(self) -> Dict[str, Any]:
-        return self.options.as_dict(
+        data = self.options.as_dict(
             "goal",
             "logic_vanilla",
             "logic_vanilla_all",
@@ -364,3 +380,5 @@ class IdleLoopsWorld(World):
             "mod_ui_crime",
             "mod_color"
         )
+        data["version"] = self.world_version.as_simple_string()
+        return data

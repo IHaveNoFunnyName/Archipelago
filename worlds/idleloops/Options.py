@@ -26,6 +26,7 @@ class Goal(Choice):
 class LogicVanilla(Toggle):
     """Respect Vanilla Skill requirements.
     e.g. With this on Buy Supplies requires (Combat + Magic) >= 35.
+    And (maybe more importantly) Chrono/Pyromancy require 150/200 Magic
 
     Progress Bar requirements are ignored."""
     display_name = "Logic: Vanilla Skill Requirements"
@@ -42,6 +43,13 @@ class LogicVanillaAll(Toggle):
     way too close to vanilla. Buutt, I did finish the logic
     so that'll go to waste without this option."""
     display_name = "Logic: Vanilla Requirements (All)"
+
+
+class LogicHardMana(Toggle):
+    """Puts inefficient mana generation of
+    pots > two locks > buy mana > two locks > buy mana etc...
+    into logic."""
+    display_name = "Logic: Hard Z1 Mana Logic"
 
 
 class LogicGlasses(DefaultOnToggle):
@@ -523,6 +531,7 @@ class ModColor(DefaultOnToggle):
 option_groups = [
     OptionGroup("Advanced", [
         LogicFight,
+        LogicHardMana,
         LogicZ2Mana,
         LocationSkill,
         LocationAlchemy,
@@ -548,6 +557,7 @@ class IdleLoopsOptions(DeathLinkMixin, PerGameCommonOptions):
     logic_fight: LogicFight
     logic_glasses: LogicGlasses
     item_glasses: ItemGlasses
+    logic_hard_mana: LogicHardMana
     logic_z2_mana: LogicZ2Mana
     logic_fight_heal: LogicFightHeal
     logic_haggle: LogicHaggle
