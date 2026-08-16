@@ -391,7 +391,7 @@ class Shop(LimitedLocations):
             {
                 "name": f"{self.zone} - {self.name}",
                 "classification": self.classification,
-                "count": 1
+                "count": self.base_count
             }
         ] if options.item_shop and getattr(options, "location_" + self.option) else []
 
