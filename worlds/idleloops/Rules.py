@@ -153,7 +153,7 @@ class HasMana(Rule["IdleLoopsWorld"], game="Idle Loops"):
 
     @override
     def _instantiate(self, world: "IdleLoopsWorld") -> Rule.Resolved:
-        return self.Resolved(player=world.player, mana_goal=self.mana_goal, rep_goal=self.rep_goal, fight_segments=int(world.options.logic_fight), hard_lock_logic=bool(world.options.logic_hard_mana), caching_enabled=False)
+        return self.Resolved(player=world.player, mana_goal=self.mana_goal, rep_goal=self.rep_goal, fight_segments=5, hard_lock_logic=bool(world.options.logic_hard_mana), caching_enabled=False)
 
     class Resolved(Rule.Resolved):
         mana_goal: int
@@ -213,7 +213,7 @@ class JourneyRule(Rule["IdleLoopsWorld"], game="Idle Loops"):
 
     @override
     def _instantiate(self, world: "IdleLoopsWorld") -> Rule.Resolved:
-        return self.Resolved(player=world.player, extra_mana=int(world.options.logic_z2_mana and self.extra) * 10000, fight_segments=int(world.options.logic_fight), caching_enabled=False)
+        return self.Resolved(player=world.player, extra_mana=int(world.options.logic_z2_mana and self.extra) * 10000, fight_segments=5, caching_enabled=False)
 
     class Resolved(Rule.Resolved):
         extra_mana: int

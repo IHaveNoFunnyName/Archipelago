@@ -84,21 +84,6 @@ class LogicHaggle(Toggle):
     display_name = "Logic: Haggle in Z1"
 
 
-class LogicFight(NamedRange):
-    """As the gold you get from Fight Monsters is variable,
-    the randomizer needs to know how much you want to grind it up.
-
-    "Goal Based" is (Z1 = 5, Z2+ = 9)"""
-    display_name = "Logic: Fight Monsters Segments"
-    range_start = 3
-    range_end = 9
-    default = "goal_based"
-    special_range_names = {
-        "goal_based": -1,
-    }
-    defaults = (5, 9, 9, 9)
-
-
 class LogicZ2Mana(DefaultOnToggle):
     """Have a minimum of 10k mana after Start Journey.
     (With all possible items in Z1)"""
@@ -547,7 +532,6 @@ class ModColor(DefaultOnToggle):
 
 option_groups = [
     OptionGroup("Advanced", [
-        LogicFight,
         LogicHardMana,
         LogicZ2Mana,
         LocationSkill,
@@ -571,7 +555,6 @@ class IdleLoopsOptions(DeathLinkMixin, PerGameCommonOptions):
     goal: Goal
     logic_vanilla: LogicVanilla
     logic_mana_reduction: LogicManaReduction
-    logic_fight: LogicFight
     logic_glasses: LogicGlasses
     item_glasses: ItemGlasses
     logic_hard_mana: LogicHardMana
