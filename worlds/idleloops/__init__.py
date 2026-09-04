@@ -243,35 +243,48 @@ class IdleLoopsWorld(World):
             "Z1 - AP Shop": "Z1 - AP Shop" if self.options.item_shop else [],
             "Z1 - Investigate": "Z1 - Investigate",
             "Z1 - Long Quest": ["Z1 - Investigate", "Z1 - Long Quest - Search"] if self.options.item_search else ["Z1 - Investigate"],
-            "Z1 - Meet People": meet_requirement,
-            "Z1 - Short Quest": [meet_requirement, "Z1 - Short Quest - Search"] if self.options.item_search else [meet_requirement],
             "Z1 - Wander": [],
             "Z1 - Smash Pot": [],
         }
-        dependents_glasses = {
-            "Z1 - Wander - 6": "Z1 - Buy Glasses",
-            "Z1 - Wander - 7": "Z1 - Buy Glasses",
-            "Z1 - Wander - 8": "Z1 - Buy Glasses",
-            "Z1 - Wander - 9": "Z1 - Buy Glasses",
-            "Z1 - Wander - 100": "Z1 - Buy Glasses",
-            "Z1 - Mana Pot - #3": "Z1 - Buy Glasses",
-            "Z1 - Mana Pot - #4": "Z1 - Buy Glasses",
-            "Z1 - Mana Pot - #50": "Z1 - Buy Glasses",
-            "Z1 - Mana Pot - #26": "Z1 - Buy Glasses",
-            "Z1 - Mana Pot - #27": "Z1 - Buy Glasses",
-            "Z1 - Mana Pot - #28": "Z1 - Buy Glasses",
-            "Z1 - Mana Pot - #29": "Z1 - Buy Glasses",
-            "Z1 - Lock - #6": ["Z1 - Buy Glasses", "Z1 - Lock - Search"] if self.options.item_search else "Z1 - Buy Glasses",
-            "Z1 - Lock - #7": ["Z1 - Buy Glasses", "Z1 - Lock - Search"] if self.options.item_search else "Z1 - Buy Glasses",
-            "Z1 - Lock - #8": ["Z1 - Buy Glasses", "Z1 - Lock - Search"] if self.options.item_search else "Z1 - Buy Glasses",
-            "Z1 - Lock - #9": ["Z1 - Buy Glasses", "Z1 - Lock - Search"] if self.options.item_search else "Z1 - Buy Glasses",
-            "Z1 - Lock - #10": ["Z1 - Buy Glasses", "Z1 - Lock - Search"] if self.options.item_search else "Z1 - Buy Glasses",
-        }
         if self.options.logic_glasses:
+            dependents_glasses = {
+                "Z1 - Wander - 6": "Z1 - Buy Glasses",
+                "Z1 - Wander - 7": "Z1 - Buy Glasses",
+                "Z1 - Wander - 8": "Z1 - Buy Glasses",
+                "Z1 - Wander - 9": "Z1 - Buy Glasses",
+                "Z1 - Wander - 100": "Z1 - Buy Glasses",
+                "Z1 - Mana Pot - #3": "Z1 - Buy Glasses",
+                "Z1 - Mana Pot - #4": "Z1 - Buy Glasses",
+                "Z1 - Mana Pot - #50": "Z1 - Buy Glasses",
+                "Z1 - Mana Pot - #26": "Z1 - Buy Glasses",
+                "Z1 - Mana Pot - #27": "Z1 - Buy Glasses",
+                "Z1 - Mana Pot - #28": "Z1 - Buy Glasses",
+                "Z1 - Mana Pot - #29": "Z1 - Buy Glasses",
+                "Z1 - Lock - #6": ["Z1 - Buy Glasses", "Z1 - Lock - Search"] if self.options.item_search else "Z1 - Buy Glasses",
+                "Z1 - Lock - #7": ["Z1 - Buy Glasses", "Z1 - Lock - Search"] if self.options.item_search else "Z1 - Buy Glasses",
+                "Z1 - Lock - #8": ["Z1 - Buy Glasses", "Z1 - Lock - Search"] if self.options.item_search else "Z1 - Buy Glasses",
+                "Z1 - Lock - #9": ["Z1 - Buy Glasses", "Z1 - Lock - Search"] if self.options.item_search else "Z1 - Buy Glasses",
+                "Z1 - Lock - #10": ["Z1 - Buy Glasses", "Z1 - Lock - Search"] if self.options.item_search else "Z1 - Buy Glasses",
+            }
             dependents.update(dependents_glasses)
-        # Hacky logic, add locks after the glasses checks so if it only checks this if it's not a 50%+ lock
+
+        if self.options.logic_party:
+            dependents_party = {
+                "Z1 - Wander - 6": "Z1 - Throw Party",
+                "Z1 - Wander - 7": "Z1 - Throw Party",
+                "Z1 - Wander - 8": "Z1 - Throw Party",
+                "Z1 - Wander - 9": "Z1 - Throw Party",
+                "Z1 - Wander - 100": "Z1 - Throw Party",
+                "Z1 - Short Quest - #1": "Z1 - Throw Party",
+                "Z1 - Short Quest - #20": "Z1 - Throw Party",
+            }
+            dependents.update(dependents_party)
+
+        # These are checked in order, so this makes it see optional dependencies first
         dependents.update({
             "Z1 - Lock": "Z1 - Lock - Search" if self.options.item_search else [],
+            "Z1 - Meet People": meet_requirement,
+            "Z1 - Short Quest": [meet_requirement, "Z1 - Short Quest - Search"] if self.options.item_search else [meet_requirement],
         })
 
         while len(required_items):

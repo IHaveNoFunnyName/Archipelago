@@ -6,7 +6,7 @@ from typing import Any, Optional, Tuple, TYPE_CHECKING, TypedDict, override
 from BaseClasses import CollectionState
 from rule_builder.options import Operator, OptionFilter
 from rule_builder.rules import CanReachRegion, Has, HasFromList, Rule, True_
-from .Options import Goal, LogicFightHeal, LogicVanilla, LogicManaReduction, LogicGlasses, IdleLoopsOptions, LogicVanillaAll
+from .Options import Goal, LogicFightHeal, LogicParty, LogicVanilla, LogicManaReduction, LogicGlasses, IdleLoopsOptions, LogicVanillaAll
 
 if TYPE_CHECKING:
     from . import IdleLoopsWorld
@@ -348,6 +348,7 @@ rules["Magic to 30"] = (
 
 # Arbitrary HasMana rule so you're able to do some decent Wandering after buying them.
 rules["Option Has Glasses"] = (Has("Z1 - Buy Glasses") & HasMana(1500)) | OptionFilter(LogicGlasses, 0) | Has("Hard")
+rules["Option Party"] = Has("Z1 - Throw Party") | OptionFilter(LogicParty, 0) | Has("Hard")
 
 # Simpler rules for after Z1.
 rules["Has Combat"] = Has("Z1 - Warrior Lessons") | (OptionFilter(Goal, Goal.option_z4, "ge") & CanReachRegion("Z4 Pyromancy") & CanReachRegion("Z4 Hunt Trolls"))
@@ -384,3 +385,5 @@ rules["Has Soulstones"] = (
 )
 
 rules["Has Pyromancy"] = OptionFilter(Goal, Goal.option_z4, "lt") | Has("Z4 - Pyromancy") & HasIfOptionManaReduction(rules["Z4 - Decipher Runes"]) & HasIfOptionVanillaSkills(rules["Has Magic"]) & HasIfOptionVanillaAll(rules["Z4 - Decipher Runes"])
+
+# Imbue mind - Possible with split Chrono/Pyro training at ~10k soulstones ~1.3k relevant talent
