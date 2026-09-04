@@ -684,9 +684,9 @@ all_actions: List[_Action] = [
                                      rule=(Has("Z1 - Lock") & HasMana(450) | Has("Z1 - Short Quest") & HasMana(650) | HasFromList("Z1 - Long Quest", "Progressive Lootable") & HasMana(1550)) | Has("Filler - 1 Starting Gold", 10)
                                      ),
     Action()                        (zone="Z1", name="Buy Mana", internal_name="BuyMana"),
-    Action(Progress)                (zone="Z1", name="Meet People", internal_name="Met", full_rule=IfOption({"option": LocationProgress}, rules["Meet People Progress"], rules["Z1 - Meet People"])),
+    Action(Progress, AddRule)       (zone="Z1", name="Meet People", internal_name="Met", full_rule=IfOption({"option": LocationProgress}, rules["Meet People Progress"], rules["Z1 - Meet People"]), add_rules=[AddRuleTuple("Meet People Party", 9, rules["Option Party"])]),
     Action()                        (zone="Z1", name="Train Strength", internal_name="TrainStrength", classification=ItemClassification.progression_skip_balancing, rule=HasMana(2000) & HasIfOptionVanillaAll(rules["Meet People Progress"])),
-    Action(Limited)                 (zone="Z1", name="Short Quest", internal_name="SQuests", count=20, rule=rules["Meet People Progress"]),
+    Action(Limited, AddRule)        (zone="Z1", name="Short Quest", internal_name="SQuests", count=20, rule=rules["Meet People Progress"], add_rules=[AddRuleTuple("Short Quest Party", 11, rules["Option Party"])]),
     Action(Progress)                (zone="Z1", name="Investigate", internal_name="Secrets", full_rule=rules["Z1 - Investigate"]),
     Action(Limited)                 (zone="Z1", name="Long Quest", internal_name="LQuests", count=10, rule=rules["Z1 - Investigate"]),
     Action()                        (zone="Z1", name="Throw Party", internal_name="ThrowParty", full_rule=rules["Z1 - Throw Party"]),
@@ -697,7 +697,7 @@ all_actions: List[_Action] = [
     Action()                        (zone="Z1", name="Haggle", rule=HasFromList("Z1 - Long Quest", "Progressive Lootable", count=1) & HasMana(1600) & HasIfOptionVanillaSkills(rules["Magic to 30"] | rules["Combat to 30"])),
     Action()                        (zone="Z1", name="Start Journey", internal_name="StartJourney", rule=JourneyRule() & HasIfOptionVanillaSkills(rules["Magic to 30"] | rules["Combat to 30"])),
     Action(Shop)                    (zone="Z1", name="AP Shop", internal_name="APShop", min=50, max=200, option="z1_shop"),
-    Action(Z2, Shop, Start)         (zone="Z1", name="AP Shop (Expensive)", internal_name="APShopExpensive", min=300, option="z1_shop_expensive", rule=Has("Hard") | (rules["Has Practical Magic"] & HasFromList("Z1 - Lock", "Z1 - Short Quest", "Z1 - Long Quest", "Progressive Lootable", count=40))),
+    Action(Z2, Shop, Start)         (zone="Z1", name="AP Shop (Expensive)", internal_name="APShopExpensive", min=300, option="z1_shop_expensive", rule=Has("Hard") | (rules["Has Practical Magic"] & (HasFromList("Z1 - Lock", "Z1 - Short Quest", "Z1 - Long Quest", "Progressive Lootable", count=40) | Has("Hard")))),
 
     Action(Multipart)               (zone="Z1", name="Heal The Sick", internal_name="Heal", option="heal", rule=CanReachRegion("Magic to 30") & HasMana(2500, 1)),
     Action(AddRule, Multipart)      (zone="Z1", name="Fight Monsters", internal_name="Fight", option="fight", rule=(CanReachRegion("Z4 Pyromancy") | CanReachRegion("Combat to 30")) & HasMana(2000, 2), add_rules=AddRuleTuple("pyromancy", 8, rules["Has Pyromancy"])),
