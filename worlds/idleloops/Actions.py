@@ -663,6 +663,7 @@ filler_actions = [
     Action(Filler)(name="+0.1 Game Speed", option="item_game_speed", classification=ItemClassification.useful),
     Action(Filler)(name="+0.1 Exp Multiplier", option="item_exp_mult", classification=ItemClassification.useful),
     Action(Filler)(name="Filler - Nothing"),
+    Action(Filler)(name="Death", option="filler_trap", classification=ItemClassification.trap),
     Action(Filler)(name="Hard", classification=ItemClassification.progression),
 ]
 

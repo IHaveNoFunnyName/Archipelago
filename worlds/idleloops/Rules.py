@@ -86,7 +86,6 @@ def mana_from_state(hard_lock_logic: bool, fight_segments: int, state: Collectio
     }
 
     # This is *so much* cleaner than it used to be wow
-    # I really need to do it like this on the client too
     extra = state.count("Progressive Lootable", player)
     for name, limit in limits:
         if counts[name] < limit:

@@ -52,15 +52,20 @@ class LogicHardMana(Toggle):
     display_name = "Logic: Hard Z1 Mana Logic"
 
 
+class ItemGlasses(DefaultOnToggle):
+    """Adds a second "Z1 - Buy Glasses" item to the pool.
+    With both of them you start the loop with glasses."""
+    display_name = "Items: Second Glasses"
+
+
 class LogicGlasses(DefaultOnToggle):
     """Forces Glasses to appear before 50% of Wander."""
     display_name = "Logic: Buy Glasses"
 
 
-class ItemGlasses(DefaultOnToggle):
-    """Adds a second "Z1 - Buy Glasses" item to the pool.
-    With both of them you start the loop with glasses."""
-    display_name = "Items: Second Glasses"
+class LogicParty(Toggle):
+    """Forces Throw Party to appear before 50% of Meet People."""
+    display_name = "Logic: Throw Party"
 
 
 class LogicFightHeal(Range):
@@ -418,6 +423,23 @@ class FillerNothing(NamedRange):
     defaults = (0, 25, 50, 75)
 
 
+class FillerTrap(NamedRange):
+    """Adds 'Death' traps to the pool, found in your game,
+    which immediately ends the current loop and triggers a Deathlink.
+    (That is, if Deathlink is enabled.)
+    "Death" is a weird concept for this game, this is the best I came up with.
+    "Goal Based" is (Z1 = 5, Z2 = 10, Z3 = 15, Z4 = 20)
+    """
+    display_name = "Trap: Death"
+    range_start = 0
+    range_end = 50
+    default = 0
+    special_range_names = {
+        "goal_based": -1,
+    }
+    defaults = (5, 10, 15, 20)
+
+
 class ItemProgressiveLootable(NamedRange):
     """Adds extra Lootables to the pool,
     helping each Lootable to their max in *rough* order of usefulness and zone.
@@ -555,8 +577,9 @@ class IdleLoopsOptions(DeathLinkMixin, PerGameCommonOptions):
     goal: Goal
     logic_vanilla: LogicVanilla
     logic_mana_reduction: LogicManaReduction
-    logic_glasses: LogicGlasses
     item_glasses: ItemGlasses
+    logic_glasses: LogicGlasses
+    logic_party: LogicParty
     logic_hard_mana: LogicHardMana
     logic_z2_mana: LogicZ2Mana
     logic_fight_heal: LogicFightHeal
@@ -588,6 +611,7 @@ class IdleLoopsOptions(DeathLinkMixin, PerGameCommonOptions):
     filler_starting_gold: FillerStartingGold
     filler_extra_mana_pot: FillerExtraManaPot
     filler_nothing: FillerNothing
+    filler_trap: FillerTrap
     item_progressive_lootable: ItemProgressiveLootable
     game_speed: GameSpeed
     item_game_speed: ItemGameSpeed

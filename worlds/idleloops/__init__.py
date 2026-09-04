@@ -82,6 +82,8 @@ class IdleLoopsWorld(World):
         if self.options.logic_vanilla_all:
             self.options.logic_vanilla.value = 1
 
+        self.options.local_items.value.add("Death")
+
         self.handle_options()
         self.goal = "Z" + str(self.options.goal + 1)
 
@@ -368,6 +370,7 @@ class IdleLoopsWorld(World):
 
     def fill_slot_data(self) -> Dict[str, Any]:
         data = self.options.as_dict(
+            "death_link",
             "goal",
             "logic_vanilla",
             "logic_vanilla_all",
