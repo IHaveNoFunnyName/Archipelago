@@ -760,10 +760,10 @@ all_actions: List[_Action] = [
 
     # Zone 3
     Action(Z3, Progress)            (zone="Z3", name="Explore City", internal_name="City", classification=ItemClassification.progression),
-    Action(Z3, Limited)             (zone="Z3", name="Gamble", count=20, classification=ItemClassification.progression, rule=Has("Z3 - Explore City") & HasIfOptionVanillaAll("Z3 - Explore City")),
+    Action(Z3, Limited)             (zone="Z3", name="Gamble", count=30, classification=ItemClassification.progression, rule=Has("Z3 - Explore City") & HasIfOptionVanillaAll("Z3 - Explore City")),
     Action(Z3, Progress)            (zone="Z3", name="Get Drunk", internal_name="Drunk", classification=ItemClassification.progression, full_rule=rules["Z3 - Get Drunk"]),
     Action(Z3)                      (zone="Z3", name="Buy Mana", internal_name="BuyMana", classification=ItemClassification.progression),
-    Action(Z3)                      (zone="Z3", name="Sell Potions", internal_name="SellPotions", classification=ItemClassification.progression, rule=Has("Z2 - Brew Potions")),
+    Action(Z3)                      (zone="Z3", name="Sell Potions", internal_name="SellPotions", classification=ItemClassification.progression, rule=Has("Z2 - Brew Potions") & rules["Has Alchemy"]),
     Action(Z3, Multipart)           (zone="Z3", name="Adventure Guild", internal_name="AdvGuild", rule=HasIfOptionVanillaAll(rules["Z3 - Get Drunk"])),
     Action(Z3)                      (zone="Z3", name="Gather Team", internal_name="GatherTeam", rule=Has("Z3 - Adventure Guild") & HasIfOptionVanillaAll(rules["Z3 - Get Drunk"])),
     Action(Z3, Multipart)           (zone="Z3", name="Crafting Guild", internal_name="CraftGuild", rule=HasIfOptionVanillaAll(rules["Z3 - Get Drunk"])),
@@ -775,7 +775,7 @@ all_actions: List[_Action] = [
     Action(Z3)                      (zone="Z3", name="Buy Pickaxe", internal_name="BuyPickaxe"),
     Action(Z3)                      (zone="Z3", name="Start Trek", internal_name="StartTrek", classification=ItemClassification.progression),
 
-    Action(Z3, Shop)                (zone="Z3", name="AP Shop", internal_name="APShop", min=500, max=1000, option="z3_shop", rule=Has("Z2 - Practical Magic") | (Has("Z2 - Brew Potions") & rules["Has Alchemy"])),
+    Action(Z3, Shop)                (zone="Z3", name="AP Shop", internal_name="APShop", min=500, max=1000, option="z3_shop", rule=Has("Z2 - Practical Magic") | (Has("Z2 - Sell Potions") & Has("Z2 - Brew Potions") & rules["Has Alchemy"])),
 
     # I'm going to say the guilds are Z5+, but you still need the item for Gather Team/LDungeon/Architect bars
     Action(Z3, Multipart, Region, AddRule)(zone="Z3", name="Large Dungeon", internal_name="LDungeon", option="ld", rule=rules["Z3 - Large Dungeon"], add_rules=AddRuleTuple("pyromancy", 3, rules["Has Pyromancy"])),
@@ -794,9 +794,10 @@ all_actions: List[_Action] = [
 
     Action(Z4, Multipart)           (zone="Z4", name="Hunt Trolls", internal_name="HuntTrolls", option="trolls", rule=rules["Has Combat"] & rules["Has Pyromancy"] & HasIfOptionVanillaAll(rules["Z4 - Explore Cavern"])),
 
-    Action(Z4, Skill)               (zone="Z4", name="Chronomancy", action_name="Chronomancy", rule=HasIfOptionManaReduction(rules["Z4 - Decipher Runes"]) & HasIfOptionVanillaSkills(rules["Has Magic"]) & HasIfOptionVanillaAll(rules["Z4 - Decipher Runes"])),
-    Action(Z4, Skill)               (zone="Z4", name="Pyromancy", action_name="Pyromancy", full_rule=rules["Has Pyromancy"]),
-    Action(Z4, Buff)                (zone="Z4", name="Imbue Mind", action_name="Imbue Mind", internal_name="Imbuement", option="mind", rule=HasIfOptionVanillaSkills(rules["Has Magic"]) & HasIfOptionVanillaAll(rules["Z4 - Check Walls"]))
+    Action(Z4, Skill)               (zone="Z4", name="Chronomancy", action_name="Chronomancy", option="mancy", rule=HasIfOptionManaReduction(rules["Z4 - Decipher Runes"]) & HasIfOptionVanillaSkills(rules["Has Magic"]) & HasIfOptionVanillaAll(rules["Z4 - Decipher Runes"])),
+    Action(Z4, Skill)               (zone="Z4", name="Pyromancy", action_name="Pyromancy", option="mancy", full_rule=rules["Has Pyromancy"]),
+    Action(Z4, Buff)                (zone="Z4", name="Imbue Mind", action_name="Imbue Mind", internal_name="Imbuement", internal_action_name="ImbueMind", option="mind", rule=rules["Has Soulstones"] & HasIfOptionVanillaSkills(rules["Has Magic"]) & HasIfOptionVanillaAll(rules["Z4 - Check Walls"])),
+    Action(Z4, Buff)                (zone="Z4", name="Imbue Body", action_name="Imbue Body", internal_name="Imbuement2", internal_action_name="ImbueBody", option="mind", rule=Has("Z4 - Imbue Mind") & rules["Has Soulstones"] & HasIfOptionVanillaSkills(rules["Has Magic"]) & HasIfOptionVanillaAll(rules["Z4 - Check Walls"]))
 ]
 
 all_actions = all_actions + filler_actions

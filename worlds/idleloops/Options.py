@@ -130,10 +130,11 @@ class ItemSearch(DefaultOnToggle):
 
 class LocationSkillToggle(DefaultOnToggle):
     """Adds locations for skills based on the goal:
-    Combat, Magic, Practical Magic, Dark Magic, Chronomancy and Pyromancy:
+    Combat, Magic, Practical Magic, Dark Magic:
     (Z1 = 30, Z2 = 50, Z3 = 100, Z4 = 200)
     Alchemy: (Z2 = 25, Z3 = 50, Z4 = 75)
     Crafting: (Z3 = 25, Z4 = 50)
+    Chrono/Pyromancy: (Z4 = 50)
 
     Caution: Turning too many locations off while having additional items
     (from e.g. "Items: Progressive Lootables" or "Items: Game Speed")
@@ -203,6 +204,22 @@ class LocationCrafting(NamedRange):
     }
     default = "goal_based"
     defaults = (0, 0, 70, 140)
+
+
+class LocationMancy(NamedRange):
+    """Overwrite the max Chrono/Pyromancy level.
+
+    Caution: Turning too many locations off while having additional items
+    (from e.g. "Items: Progressive Lootables" or "Items: Game Speed")
+    will break generation."""
+    display_name = "Locations: Chrono/Pyromancy (Skill)"
+    range_start = 0
+    range_end = 300
+    special_range_names = {
+        "goal_based": -1,
+    }
+    default = "goal_based"
+    defaults = (0, 0, 0, 50)
 
 
 class LocationMultipartToggle(DefaultOnToggle):
@@ -314,16 +331,16 @@ class LocationRitual(NamedRange):
 
 
 class LocationMind(Range):
-    """Overwrite how many Imbues to Mind.
+    """Overwrite how many Imbues to Mind (also controlls Imbue Body).
 
     Caution: Turning too many locations off while having additional items
     (from e.g. "Items: Progressive Lootables" or "Items: Game Speed")
     will break generation."""
     display_name = "Locations: Imbue Mind"
     range_start = 0
-    range_end = 5
-    default = 1
-    defaults = (0, 0, 0, 1)
+    range_end = 50
+    default = 10
+    defaults = (0, 0, 0, 10)
 
 
 class ItemShop(Toggle):
@@ -567,6 +584,7 @@ class IdleLoopsOptions(DeathLinkMixin, PerGameCommonOptions):
     location_skill: LocationSkill
     location_alchemy: LocationAlchemy
     location_crafting: LocationCrafting
+    location_mancy: LocationMancy
     location_multipart_toggle: LocationMultipartToggle
     location_heal: LocationHeal
     location_fight: LocationFight
