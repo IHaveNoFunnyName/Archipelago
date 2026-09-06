@@ -766,7 +766,7 @@ all_actions: List[_Action] = [
     Action(Z3)                      (zone="Z3", name="Buy Mana", internal_name="BuyMana", classification=ItemClassification.progression),
     Action(Z3)                      (zone="Z3", name="Sell Potions", internal_name="SellPotions", classification=ItemClassification.progression, rule=Has("Z2 - Brew Potions") & rules["Has Alchemy"]),
     Action(Z3, Multipart)           (zone="Z3", name="Adventure Guild", internal_name="AdvGuild", rule=HasIfOptionVanillaAll(rules["Z3 - Get Drunk"])),
-    Action(Z3)                      (zone="Z3", name="Gather Team", internal_name="GatherTeam", rule=Has("Z3 - Adventure Guild") & HasIfOptionVanillaAll(rules["Z3 - Get Drunk"])),
+    Action(Z3)                      (zone="Z3", name="Gather Team", internal_name="GatherTeam", rule=Has("Z3 - Adventure Guild") & (CanReachRegion("Combat to 2") | CanReachRegion("Magic to 2")) & HasIfOptionVanillaAll(rules["Z3 - Get Drunk"])),
     Action(Z3, Multipart)           (zone="Z3", name="Crafting Guild", internal_name="CraftGuild", rule=HasIfOptionVanillaAll(rules["Z3 - Get Drunk"])),
     Action(Z3)                      (zone="Z3", name="Craft Armor", internal_name="CraftArmor", rule=Has("Z2 - Hunt", 2) & HasIfOptionVanillaAll(rules["Z3 - Get Drunk"])),
     Action(Z3, Progress)            (zone="Z3", name="Apprentice", full_rule=rules["Z3 - Apprentice"]),

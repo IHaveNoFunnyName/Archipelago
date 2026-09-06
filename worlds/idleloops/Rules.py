@@ -370,9 +370,9 @@ rules["Has Dark Magic"] = Has("Z2 - Dark Magic") & Has("Z1 - Haggle") & HasIfOpt
 
 rules["Z3 - Get Drunk"] = Has("Z3 - Get Drunk") & HasIfOptionVanillaAll("Z3 - Explore City")
 rules["Z3 - Large Dungeon"] = Has("Z3 - Large Dungeon") & Has("Z3 - Adventure Guild") & Has("Z3 - Gather Team") & rules["Has Combat"] & rules["Has Magic"] & HasIfOptionVanillaAll(rules["Z3 - Get Drunk"])
-rules["Z3 - Apprentice"] = Has("Z3 - Apprentice") & Has("Z3 - Crafting Guild") & HasIfOptionVanillaAll(rules["Z3 - Get Drunk"])
-rules["Z3 - Mason"] = Has("Z3 - Mason") & Has("Z3 - Crafting Guild") & HasIfOptionVanillaAll(rules["Z3 - Apprentice"])
-rules["Z3 - Architect"] = Has("Z3 - Architect") & Has("Z3 - Crafting Guild") & HasIfOptionVanillaAll(rules["Z3 - Mason"])
+rules["Z3 - Apprentice"] = Has("Z3 - Apprentice") & Has("Z3 - Crafting Guild") & CanReachRegion("Magic to 2") & HasIfOptionVanillaAll(rules["Z3 - Get Drunk"])
+rules["Z3 - Mason"] = Has("Z3 - Mason") & Has("Z3 - Crafting Guild") & CanReachRegion("Magic to 2") & HasIfOptionVanillaAll(rules["Z3 - Apprentice"])
+rules["Z3 - Architect"] = Has("Z3 - Architect") & Has("Z3 - Crafting Guild") & CanReachRegion("Magic to 2") & HasIfOptionVanillaAll(rules["Z3 - Mason"])
 
 rules["Z4 - Decipher Runes"] = Has("Z4 - Decipher Runes") & HasIfOptionVanillaAll("Z4 - Climb Mountain")
 rules["Z4 - Explore Cavern"] = Has("Z4 - Explore Cavern") & HasIfOptionVanillaAll("Z4 - Climb Mountain")
