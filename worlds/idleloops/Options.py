@@ -440,20 +440,33 @@ class FillerTrap(NamedRange):
     defaults = (5, 10, 15, 20)
 
 
-class ItemProgressiveLootable(NamedRange):
-    """Adds extra Lootables to the pool,
-    helping each Lootable to their max in *rough* order of usefulness and zone.
-    If what an item practically gives is different from its name,
-    there will be an entry in the log.
-    "Goal Based" is (Z1 = 0, Z2+ = 20)"""
+class ProgressiveLootableType(Choice):
+    """"Replace" removes Lootables from the pool and replaces them with
+    the same number of Progressive Lootables which award them in order.
+    "Extra" adds 20 Progressive Lootables to the pool on top of
+    the original items, helping each to max.
+    (Lootables are items like Locks and Short Quests)
+    I recommend "Off" for Z1 goals and "Extra" otherwise.
+    (My "goal based" method fails with these drop downs
+    I'll have a better solution next major release)"""
     display_name = "Item: Progressive Lootables"
-    range_start = 0
-    range_end = 40
-    default = "goal_based"
-    special_range_names = {
-        "goal_based": -1,
-    }
-    defaults = (0, 20, 20, 20)
+    option_off = 0
+    option_replace = 1
+    option_extra = 2
+    default = 0
+
+
+class ProgressiveLootableBehaviour(Choice):
+    """"Even" fills up each item in a zone equally then moves to the next zone
+    (Equally by %, so you'll have twice as many Short Quests as Locks)
+    "Important First" Fills each Lootable, based on their logical importance
+    (i.e. 2 Long Quests first for actions that require 2 rep,
+    then Short Quests as they're the only Z1 lootable that gives efficientgold
+    etc...)"""
+    display_name = "Progressive Lootable Behaviour"
+    option_even = 0
+    option_important_first = 1
+    default = 0
 
 
 class GameSpeed(NamedRange):

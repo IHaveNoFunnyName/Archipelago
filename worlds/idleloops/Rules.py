@@ -67,7 +67,7 @@ limits = [
 mana_cost = [
     ("SQuests", 600, 20),
     ("Locks", 400, 10),
-    ("LQuests", 1450, 30),
+    ("LQuests", 1400, 30),
 ]
 
 
@@ -112,8 +112,7 @@ def mana_from_state(hard_lock_logic: bool, fight_segments: int, state: Collectio
             # But maybe you want that to be possible so it's an option
             if name == "Locks" and (not (hard_lock_logic or state.has("Hard", player)) and not SQuest_done):
                 continue
-            reps = mana // cost
-            reps = min(reps, counts[name])
+            reps = min(mana // cost, counts[name])
             mana -= reps * cost
             counts[name] -= reps
             gold += reps * gain
